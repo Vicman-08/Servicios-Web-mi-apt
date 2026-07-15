@@ -67,6 +67,7 @@
             <main class="dashboard">
                 <nav class="tabs" aria-label="Secciones del panel">
                     <button class="tab active" type="button" data-tab="products">Productos</button>
+                    <button class="tab" type="button" data-tab="assistant">Asistente IA</button>
                     <button id="cart-tab" class="tab" type="button" data-tab="cart" hidden>Carrito</button>
                     <button id="users-tab" class="tab" type="button" data-tab="users" hidden>Usuarios</button>
                     <button id="orders-tab" class="tab" type="button" data-tab="orders" hidden>Compras</button>
@@ -99,6 +100,30 @@
                     </form>
 
                     <div id="products-grid" class="product-grid" aria-live="polite"></div>
+                </section>
+
+                <section id="assistant-section" class="tab-section" hidden>
+                    <div class="section-heading">
+                        <div>
+                            <h2>Recomendaciones inteligentes</h2>
+                            <p class="muted">Describe qué necesitas y la IA buscará opciones dentro del catálogo disponible.</p>
+                        </div>
+                    </div>
+
+                    <form id="ai-form" class="editor-card ai-form">
+                        <label for="ai-query">¿Qué producto estás buscando?</label>
+                        <textarea id="ai-query" minlength="2" maxlength="500" rows="3" required placeholder="Ejemplo: Necesito un teclado para trabajar y tengo un presupuesto de $1,000"></textarea>
+                        <button id="ai-submit-button" class="primary-button" type="submit">Obtener recomendaciones</button>
+                    </form>
+
+                    <div id="ai-result" class="ai-result" hidden>
+                        <div class="ai-answer-card">
+                            <span class="eyebrow">Respuesta de IA</span>
+                            <p id="ai-answer"></p>
+                            <small id="ai-provider" class="muted"></small>
+                        </div>
+                        <div id="ai-products" class="product-grid" aria-live="polite"></div>
+                    </div>
                 </section>
 
                 <section id="cart-section" class="tab-section" hidden>

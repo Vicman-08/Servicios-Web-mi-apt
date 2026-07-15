@@ -10,6 +10,7 @@ use App\Models\Order;
 use App\Models\Product;
 use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
+use Illuminate\Support\Facades\Http;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -538,6 +539,109 @@ class MongoCrudTest extends TestCase
             ->assertJsonPath('data.orders.total', 1)
             ->assertJsonPath('data.orders.revenue', '100.00')
             ->assertJsonPath('data.products.total', 1);
+    }
+
+    public function test_public_ai_route_consumes_openai_and_returns_only_catalog_products(): void
+    {
+        $product = Product::create([
+            'sku' => 'AI-001',
+            'name' => 'Teclado recomendado',
+            'description' => 'Teclado cómodo para oficina.',
+            'price' => '750.00',
+            'currency' => 'MXN',
+            'stock' => 4,
+            'is_active' => true,
+            'tags' => ['oficina'],
+        ]);
+        config()->set('services.openai.key', 'test-openai-key');
+        config()->set('services.openai.model', 'gpt-5.6-luna');
+        config()->set('services.openai.base_url', 'https://api.openai.com/v1');
+
+        Http::fake([
+            'https://api.openai.com/v1/responses' => Http::response([
+                'id' => 'resp_test_123',
+                'model' => 'gpt-5.6-luna-2026-07-01',
+                'output' => [[
+                    'type' => 'message',
+                    'content' => [[
+                        'type' => 'output_text',
+                        'text' => json_encode([
+                            'answer' => 'Este teclado es una buena opción para trabajar.',
+                            'recommended_product_ids' => [(string) $product->getKey(), 'id-inventado'],
+                        ]),
+                    ]],
+                ]],
+                'usage' => ['input_tokens' => 100, 'output_tokens' => 30, 'total_tokens' => 130],
+            ]),
+        ]);
+
+        $this->postJson('/api/v1/ai/recommendations', [
+            'query' => 'Necesito un teclado para trabajar por menos de mil pesos',
+        ])->assertOk()
+            ->assertJsonPath('data.provider', 'openai')
+            ->assertJsonPath('data.model', 'gpt-5.6-luna-2026-07-01')
+            ->assertJsonCount(1, 'data.recommendations')
+            ->assertJsonPath('data.recommendations.0.id', (string) $product->getKey());
+
+        $interaction = AiInteraction::firstOrFail();
+        $this->assertSame('success', $interaction->status);
+        $this->assertSame('openai', $interaction->provider);
+        $this->assertNull($interaction->user_id);
+        $this->assertSame([(string) $product->getKey()], $interaction->metadata['recommended_product_ids']);
+
+        Http::assertSent(function ($request) use ($product): bool {
+            return $request->url() === 'https://api.openai.com/v1/responses'
+                && $request->hasHeader('Authorization', 'Bearer test-openai-key')
+                && $request['store'] === false
+                && $request['text']['format']['type'] === 'json_schema'
+                && str_contains($request['input'], (string) $product->getKey());
+        });
+    }
+
+    public function test_ai_route_reports_missing_configuration_and_records_the_error(): void
+    {
+        Product::create([
+            'sku' => 'AI-CONFIG-001',
+            'name' => 'Producto para IA',
+            'description' => null,
+            'price' => '100.00',
+            'currency' => 'MXN',
+            'stock' => 1,
+            'is_active' => true,
+        ]);
+        config()->set('services.openai.key', null);
+
+        $this->postJson('/api/v1/ai/recommendations', [
+            'query' => 'Recomiéndame algo',
+        ])->assertStatus(503)
+            ->assertJsonPath('message', 'El servicio de IA no está configurado. Agrega OPENAI_API_KEY en el archivo .env del servidor.');
+
+        $this->assertSame('error', AiInteraction::firstOrFail()->status);
+        Http::assertNothingSent();
+    }
+
+    public function test_only_admin_can_review_ai_interaction_history(): void
+    {
+        AiInteraction::create([
+            'user_id' => null,
+            'query' => 'Consulta guardada',
+            'response' => 'Respuesta guardada',
+            'provider' => 'openai',
+            'model' => 'gpt-5.6-luna',
+            'status' => 'success',
+            'duration_ms' => 125,
+            'metadata' => ['external_id' => 'resp_test'],
+        ]);
+
+        Sanctum::actingAs($this->user('buyer'));
+        $this->getJson('/api/v1/admin/ai-interactions')->assertForbidden();
+
+        Sanctum::actingAs($this->user('admin'));
+        $this->getJson('/api/v1/admin/ai-interactions?status=success')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.provider', 'openai')
+            ->assertJsonPath('data.0.duration_ms', 125);
     }
 
     public function test_legacy_unversioned_api_is_no_longer_exposed(): void

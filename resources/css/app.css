@@ -215,6 +215,12 @@ code, .method, .api-log { font-family: ui-monospace, SFMono-Regular, Menlo, mono
     box-shadow: var(--shadow);
 }
 .editor-card { margin-bottom: 1.2rem; padding: 1.2rem; }
+.ai-form { display: grid; gap: 1rem; }
+.ai-form .primary-button { width: fit-content; }
+.ai-result { display: grid; gap: 1rem; }
+.ai-answer-card { padding: 1.3rem; border: 1px solid #cdddcf; border-radius: 18px; background: #eef7ef; }
+.ai-answer-card p { margin: .5rem 0; font-size: 1.05rem; line-height: 1.65; }
+.compact-card { min-height: 230px; }
 .form-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; margin-bottom: 1rem; }
 .form-grid .wide { grid-column: 1 / -1; }
 

@@ -25,6 +25,8 @@ La API pública actual está versionada bajo el prefijo `/api/v1`. Las respuesta
 - Cambios controlados del estado de las órdenes.
 - Ajustes de existencias con historial y protección contra inventario negativo.
 - Dashboard administrativo con usuarios, catálogo, compras, ingresos e inventario.
+- Recomendaciones inteligentes del catálogo mediante la API externa de OpenAI.
+- Historial de consultas de IA en MongoDB, disponible para el administrador.
 - Interfaz gráfica adaptable a computadora y celular.
 
 ## Colecciones de MongoDB
@@ -52,6 +54,21 @@ php artisan key:generate
 php artisan migrate:fresh --seed
 npm run build
 ```
+
+Para activar las recomendaciones externas, agrega una clave de API únicamente en el `.env` del servidor:
+
+```dotenv
+OPENAI_API_KEY=tu_clave_del_proyecto
+OPENAI_MODEL=gpt-5.6-luna
+```
+
+Después limpia la configuración almacenada:
+
+```bash
+php artisan config:clear
+```
+
+La clave nunca debe escribirse en JavaScript, subirse a GitHub ni incluirse dentro de la aplicación móvil.
 
 > `migrate:fresh` elimina los datos anteriores de la base configurada. Debe utilizarse solamente para preparar o reiniciar la demostración.
 
@@ -100,7 +117,9 @@ Los clientes se crean desde el botón **Crear cuenta**. Después del registro pu
 | `GET` | `/api/v1/products/{id}` | Consultar producto | Público |
 | `GET` | `/api/v1/categories` | Listar categorías activas | Público |
 | `GET` | `/api/v1/categories/{id}` | Consultar categoría activa | Público |
+| `POST` | `/api/v1/ai/recommendations` | Obtener recomendaciones con OpenAI | Público, máximo 10 solicitudes/minuto |
 | `GET` | `/api/v1/admin/dashboard` | Consultar estadísticas generales | Administrador |
+| `GET` | `/api/v1/admin/ai-interactions` | Consultar historial de IA | Administrador |
 | `GET/POST/PATCH/DELETE` | `/api/v1/admin/categories` | CRUD de categorías | Administrador |
 | `GET` | `/api/v1/admin/products` | Listar productos activos e inactivos | Administrador |
 | `POST` | `/api/v1/admin/products` | Crear producto | Administrador |
@@ -135,4 +154,4 @@ Las pruebas utilizan la base separada `servicios_web_subarg_test`:
 php artisan test
 ```
 
-Cubren registro automático como cliente, inicio de sesión real con token MongoDB, catálogo público paginado, restricciones por rol, actualización parcial, CRUD de productos, usuarios y categorías, compra, inventario insuficiente, cancelación, estados de órdenes, ajustes de inventario, dashboard y documentos de categorías, carritos e interacciones de IA.
+Cubren registro automático como cliente, inicio de sesión real con token MongoDB, catálogo público paginado, restricciones por rol, actualización parcial, CRUD de productos, usuarios y categorías, carrito, checkout multiproducto, inventario insuficiente, cancelación, estados de órdenes, ajustes de inventario, dashboard, recomendaciones externas simuladas e historial de interacciones de IA.

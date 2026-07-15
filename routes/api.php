@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\AiInteractionController;
+use App\Http\Controllers\AiRecommendationController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\CheckoutController;
@@ -21,6 +23,9 @@ Route::prefix('v1')->name('api.v1.')->group(function (): void {
     Route::get('products/{product}', [ProductController::class, 'show'])->name('products.show');
     Route::get('categories', [CategoryController::class, 'index'])->name('categories.index');
     Route::get('categories/{category}', [CategoryController::class, 'show'])->name('categories.show');
+    Route::post('ai/recommendations', AiRecommendationController::class)
+        ->middleware('throttle:10,1')
+        ->name('ai.recommendations');
 
     Route::middleware('auth:sanctum')->group(function (): void {
         Route::get('me', [UserController::class, 'me'])->name('me.show');
@@ -42,6 +47,7 @@ Route::prefix('v1')->name('api.v1.')->group(function (): void {
 
         Route::prefix('admin')->name('admin.')->middleware('can:admin-access')->group(function (): void {
             Route::get('dashboard', DashboardController::class)->name('dashboard');
+            Route::get('ai-interactions', [AiInteractionController::class, 'index'])->name('ai-interactions.index');
 
             // CRUD de categorías exclusivo del administrador.
             Route::get('categories', [CategoryController::class, 'adminIndex'])->name('categories.index');

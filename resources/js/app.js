@@ -4,6 +4,7 @@ const state = {
     user: null,
     products: [],
     cart: null,
+    aiRecommendations: [],
     users: [],
     orders: [],
 };
@@ -233,6 +234,29 @@ function renderCart() {
     $('#checkout-button').disabled = items.some((item) => !item.is_available);
 }
 
+function renderAiRecommendations(result) {
+    state.aiRecommendations = result.recommendations || [];
+    $('#ai-result').hidden = false;
+    $('#ai-answer').textContent = result.answer;
+    $('#ai-provider').textContent = `Proveedor: ${result.provider} · Modelo: ${result.model}`;
+
+    if (!state.aiRecommendations.length) {
+        $('#ai-products').innerHTML = '<div class="empty-state">La IA no encontró un producto adecuado para esa solicitud.</div>';
+        return;
+    }
+
+    const canBuy = ['admin', 'buyer'].includes(state.user.role);
+    $('#ai-products').innerHTML = state.aiRecommendations.map((product) => `<article class="product-card compact-card">
+        <div class="product-top"><span class="sku">${escapeHtml(product.sku)}</span><span class="stock">${product.stock} disponibles</span></div>
+        <h3>${escapeHtml(product.name)}</h3>
+        <p class="product-description">${escapeHtml(product.description || 'Sin descripción.')}</p>
+        <div class="product-bottom">
+            <span class="price">${money(product.price, product.currency)}</span>
+            ${canBuy ? `<button class="primary-button compact" data-action="ai-add" data-id="${product.id}" type="button">Agregar al carrito</button>` : ''}
+        </div>
+    </article>`).join('');
+}
+
 function resetProductForm() {
     $('#product-form').reset();
     $('#product-id').value = '';
@@ -418,6 +442,39 @@ $('#products-grid').addEventListener('submit', async (event) => {
         await api('/cart/items', { method: 'POST', body: { product_id: form.dataset.productId, quantity: Number(form.elements.quantity.value) } });
         showToast('Producto agregado al carrito.');
         form.reset();
+    } catch (error) { showToast(error.message, 'error'); }
+});
+
+$('#ai-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const button = $('#ai-submit-button');
+    button.disabled = true;
+    button.textContent = 'Consultando IA...';
+
+    try {
+        const response = await api('/ai/recommendations', {
+            method: 'POST',
+            body: { query: $('#ai-query').value },
+        });
+        renderAiRecommendations(response.data);
+    } catch (error) {
+        showToast(error.message, 'error');
+    } finally {
+        button.disabled = false;
+        button.textContent = 'Obtener recomendaciones';
+    }
+});
+
+$('#ai-products').addEventListener('click', async (event) => {
+    const button = event.target.closest('[data-action="ai-add"]');
+    if (!button) return;
+
+    try {
+        await api('/cart/items', {
+            method: 'POST',
+            body: { product_id: button.dataset.id, quantity: 1 },
+        });
+        showToast('Producto recomendado agregado al carrito.');
     } catch (error) { showToast(error.message, 'error'); }
 });
 
