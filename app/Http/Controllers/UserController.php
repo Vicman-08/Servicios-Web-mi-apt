@@ -15,11 +15,23 @@ class UserController extends Controller
     public function index(Request $request): AnonymousResourceCollection
     {
         $data = $request->validate([
+            'q' => ['nullable', 'string', 'max:100'],
+            'role' => ['nullable', Rule::in(['admin', 'buyer'])],
+            'status' => ['nullable', Rule::in(['active', 'disabled'])],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
 
         return UserResource::collection(
-            User::orderBy('created_at', 'desc')
+            User::query()
+                ->when($data['q'] ?? null, function ($query, string $search): void {
+                    $query->where(function ($query) use ($search): void {
+                        $query->where('name', 'like', "%{$search}%")
+                            ->orWhere('email', 'like', "%{$search}%");
+                    });
+                })
+                ->when($data['role'] ?? null, fn ($query, string $role) => $query->where('role', $role))
+                ->when($data['status'] ?? null, fn ($query, string $status) => $query->where('status', $status))
+                ->orderBy('created_at', 'desc')
                 ->paginate($data['per_page'] ?? 20)
                 ->withQueryString(),
         );

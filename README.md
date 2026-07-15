@@ -17,6 +17,11 @@ La API pública actual está versionada bajo el prefijo `/api/v1`. Las respuesta
 - Respuestas JSON uniformes y listados paginados.
 - Perfil de cliente preparado para teléfono y direcciones.
 - Modelo documental preparado para categorías, carrito e interacciones con IA.
+- CRUD administrativo de categorías y consulta pública de categorías activas.
+- Filtros administrativos de productos, usuarios, compras e inventario.
+- Cambios controlados del estado de las órdenes.
+- Ajustes de existencias con historial y protección contra inventario negativo.
+- Dashboard administrativo con usuarios, catálogo, compras, ingresos e inventario.
 - Interfaz gráfica adaptable a computadora y celular.
 
 ## Colecciones de MongoDB
@@ -90,10 +95,19 @@ Los clientes se crean desde el botón **Crear cuenta**. Después del registro pu
 | `GET/PATCH` | `/api/v1/me` | Consultar o actualizar perfil | Autenticado |
 | `GET` | `/api/v1/products` | Listar productos activos y paginados | Público |
 | `GET` | `/api/v1/products/{id}` | Consultar producto | Público |
+| `GET` | `/api/v1/categories` | Listar categorías activas | Público |
+| `GET` | `/api/v1/categories/{id}` | Consultar categoría activa | Público |
+| `GET` | `/api/v1/admin/dashboard` | Consultar estadísticas generales | Administrador |
+| `GET/POST/PATCH/DELETE` | `/api/v1/admin/categories` | CRUD de categorías | Administrador |
+| `GET` | `/api/v1/admin/products` | Listar productos activos e inactivos | Administrador |
 | `POST` | `/api/v1/admin/products` | Crear producto | Administrador |
 | `PATCH/PUT` | `/api/v1/admin/products/{id}` | Actualizar producto | Administrador |
 | `DELETE` | `/api/v1/admin/products/{id}` | Eliminar producto | Administrador |
 | `GET/POST/PATCH/DELETE` | `/api/v1/admin/users` | CRUD de usuarios | Administrador |
+| `GET` | `/api/v1/admin/orders` | Listar y filtrar todas las compras | Administrador |
+| `PATCH` | `/api/v1/admin/orders/{id}/status` | Cambiar el estado de una compra | Administrador |
+| `GET` | `/api/v1/admin/inventory-movements` | Consultar movimientos de inventario | Administrador |
+| `POST` | `/api/v1/admin/inventory-adjustments` | Ajustar existencias | Administrador |
 | `GET/POST` | `/api/v1/orders` | Consultar o crear compras | Cliente y administrador |
 | `DELETE` | `/api/v1/orders/{id}` | Cancelar compra | Propietario o administrador |
 
@@ -112,4 +126,4 @@ Las pruebas utilizan la base separada `servicios_web_subarg_test`:
 php artisan test
 ```
 
-Cubren registro automático como cliente, inicio de sesión real con token MongoDB, catálogo público paginado, restricciones por rol, actualización parcial, CRUD de productos y usuarios, compra, inventario insuficiente, cancelación y documentos de categorías, carritos e interacciones de IA.
+Cubren registro automático como cliente, inicio de sesión real con token MongoDB, catálogo público paginado, restricciones por rol, actualización parcial, CRUD de productos, usuarios y categorías, compra, inventario insuficiente, cancelación, estados de órdenes, ajustes de inventario, dashboard y documentos de categorías, carritos e interacciones de IA.

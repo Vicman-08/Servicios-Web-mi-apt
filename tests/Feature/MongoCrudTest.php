@@ -245,6 +245,152 @@ class MongoCrudTest extends TestCase
             ->assertJsonPath('data.addresses.0.label', 'Casa');
     }
 
+    public function test_admin_can_manage_categories_without_deleting_one_in_use(): void
+    {
+        Sanctum::actingAs($this->user('admin'));
+
+        $created = $this->postJson('/api/v1/admin/categories', [
+            'name' => 'Oficina',
+            'description' => 'Productos para oficina.',
+        ])->assertCreated()
+            ->assertJsonPath('data.slug', 'oficina');
+
+        $categoryId = $created->json('data.id');
+
+        $this->postJson('/api/v1/admin/categories', [
+            'name' => 'Oficina',
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors('slug');
+
+        $this->patchJson("/api/v1/admin/categories/{$categoryId}", [
+            'description' => 'Accesorios para trabajar.',
+        ])->assertOk()
+            ->assertJsonPath('data.description', 'Accesorios para trabajar.');
+
+        $this->getJson('/api/v1/categories')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $categoryId);
+
+        $product = Product::create([
+            'sku' => 'CAT-001',
+            'name' => 'Producto categorizado',
+            'description' => null,
+            'price' => '25.00',
+            'currency' => 'MXN',
+            'stock' => 2,
+            'is_active' => true,
+            'category_id' => $categoryId,
+        ]);
+
+        $this->deleteJson("/api/v1/admin/categories/{$categoryId}")
+            ->assertUnprocessable();
+
+        $product->delete();
+        $this->deleteJson("/api/v1/admin/categories/{$categoryId}")->assertOk();
+    }
+
+    public function test_admin_catalog_includes_inactive_products_but_public_catalog_does_not(): void
+    {
+        Product::create([
+            'sku' => 'HIDDEN-001',
+            'name' => 'Producto oculto',
+            'description' => null,
+            'price' => '50.00',
+            'currency' => 'MXN',
+            'stock' => 1,
+            'is_active' => false,
+        ]);
+
+        $this->getJson('/api/v1/products')->assertOk()->assertJsonCount(0, 'data');
+
+        Sanctum::actingAs($this->user('admin'));
+        $this->getJson('/api/v1/admin/products')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.is_active', false);
+    }
+
+    public function test_admin_can_adjust_inventory_without_creating_negative_stock(): void
+    {
+        $product = Product::create([
+            'sku' => 'STOCK-001',
+            'name' => 'Producto con ajustes',
+            'description' => null,
+            'price' => '80.00',
+            'currency' => 'MXN',
+            'stock' => 5,
+            'is_active' => true,
+        ]);
+
+        Sanctum::actingAs($this->user('admin'));
+
+        $this->postJson('/api/v1/admin/inventory-adjustments', [
+            'product_id' => (string) $product->getKey(),
+            'quantity_delta' => 4,
+            'reason' => 'Recepción de mercancía',
+        ])->assertCreated()
+            ->assertJsonPath('data.product.stock', 9)
+            ->assertJsonPath('data.movement.type', 'restock');
+
+        $this->postJson('/api/v1/admin/inventory-adjustments', [
+            'product_id' => (string) $product->getKey(),
+            'quantity_delta' => -3,
+            'reason' => 'Producto dañado',
+        ])->assertCreated()
+            ->assertJsonPath('data.product.stock', 6)
+            ->assertJsonPath('data.movement.type', 'adjustment');
+
+        $this->postJson('/api/v1/admin/inventory-adjustments', [
+            'product_id' => (string) $product->getKey(),
+            'quantity_delta' => -7,
+            'reason' => 'Ajuste imposible',
+        ])->assertUnprocessable();
+
+        $this->getJson('/api/v1/admin/inventory-movements')
+            ->assertOk()
+            ->assertJsonCount(2, 'data');
+    }
+
+    public function test_admin_can_advance_order_status_and_view_dashboard(): void
+    {
+        $buyer = $this->user('buyer');
+        $product = Product::create([
+            'sku' => 'ADMIN-ORDER-001',
+            'name' => 'Producto para dashboard',
+            'description' => null,
+            'price' => '100.00',
+            'currency' => 'MXN',
+            'stock' => 2,
+            'is_active' => true,
+        ]);
+
+        Sanctum::actingAs($buyer);
+        $order = $this->postJson('/api/v1/orders', [
+            'product_id' => (string) $product->getKey(),
+            'quantity' => 1,
+        ])->assertCreated();
+
+        $this->getJson('/api/v1/admin/dashboard')->assertForbidden();
+
+        Sanctum::actingAs($this->user('admin'));
+        $orderId = $order->json('data.id');
+
+        $this->patchJson("/api/v1/admin/orders/{$orderId}/status", [
+            'status' => 'shipped',
+        ])->assertOk()
+            ->assertJsonPath('data.status', 'shipped');
+
+        $this->getJson('/api/v1/admin/orders?status=shipped')
+            ->assertOk()
+            ->assertJsonCount(1, 'data');
+
+        $this->getJson('/api/v1/admin/dashboard')
+            ->assertOk()
+            ->assertJsonPath('data.orders.total', 1)
+            ->assertJsonPath('data.orders.revenue', '100.00')
+            ->assertJsonPath('data.products.total', 1);
+    }
+
     public function test_legacy_unversioned_api_is_no_longer_exposed(): void
     {
         $this->getJson('/api/products')->assertNotFound();

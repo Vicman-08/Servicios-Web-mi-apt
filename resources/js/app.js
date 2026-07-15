@@ -153,7 +153,8 @@ function enterApp() {
 
 async function loadProducts() {
     try {
-        const response = await api('/products?per_page=50');
+        const path = state.user.role === 'admin' ? '/admin/products?per_page=50' : '/products?per_page=50';
+        const response = await api(path);
         state.products = response.data;
         renderProducts();
     } catch (error) {
@@ -245,7 +246,8 @@ function renderUsers() {
 
 async function loadOrders() {
     try {
-        const response = await api('/orders?per_page=50');
+        const path = state.user.role === 'admin' ? '/admin/orders?per_page=50' : '/orders?per_page=50';
+        const response = await api(path);
         state.orders = response.data;
         renderOrders();
     } catch (error) { showToast(error.message, 'error'); }

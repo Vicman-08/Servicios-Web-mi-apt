@@ -13,14 +13,26 @@ class ProductController extends Controller
 {
     public function index(Request $request): AnonymousResourceCollection
     {
+        return $this->paginated($request, publicOnly: true);
+    }
+
+    public function adminIndex(Request $request): AnonymousResourceCollection
+    {
+        return $this->paginated($request, publicOnly: false);
+    }
+
+    private function paginated(Request $request, bool $publicOnly): AnonymousResourceCollection
+    {
         $filters = $request->validate([
             'q' => ['nullable', 'string', 'max:100'],
             'category_id' => ['nullable', 'string'],
+            'is_active' => ['nullable', 'boolean'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
 
         $products = Product::query()
-            ->where('is_active', true)
+            ->when($publicOnly, fn ($query) => $query->where('is_active', true))
+            ->when(! $publicOnly && array_key_exists('is_active', $filters), fn ($query) => $query->where('is_active', $filters['is_active']))
             ->when($filters['category_id'] ?? null, fn ($query, string $categoryId) => $query->where('category_id', $categoryId))
             ->when($filters['q'] ?? null, function ($query, string $search): void {
                 $query->where(function ($query) use ($search): void {
@@ -44,6 +56,13 @@ class ProductController extends Controller
     }
 
     public function show(Product $product): ProductResource
+    {
+        abort_unless($product->is_active, 404);
+
+        return new ProductResource($product);
+    }
+
+    public function adminShow(Product $product): ProductResource
     {
         return new ProductResource($product);
     }
