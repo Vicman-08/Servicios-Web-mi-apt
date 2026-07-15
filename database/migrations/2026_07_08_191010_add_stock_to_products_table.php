@@ -1,22 +1,13 @@
 <?php
 
 use Illuminate\Database\Migrations\Migration;
-use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    public function up(): void
-    {
-        Schema::table('products', function (Blueprint $table) {
-            $table->integer('stock')->default(10)->after('price');
-        });
-    }
+    protected $connection = 'mongodb';
 
-    public function down(): void
-    {
-        Schema::table('products', function (Blueprint $table) {
-            $table->dropColumn('stock');
-        });
-    }
+    // El campo stock ya forma parte de la colección products en MongoDB.
+    public function up(): void {}
+
+    public function down(): void {}
 };

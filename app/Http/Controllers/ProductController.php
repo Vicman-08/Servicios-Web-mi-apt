@@ -3,54 +3,64 @@
 namespace App\Http\Controllers;
 
 use App\Models\Product;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class ProductController extends Controller
 {
-    public function index()
+    public function index(): JsonResponse
     {
-        return response()->json(Product::all(), 200);
+        return response()->json(Product::orderBy('created_at', 'desc')->get());
     }
 
-    public function store(Request $request)
+    public function store(Request $request): JsonResponse
     {
-        $request->validate([
-            'name' => 'required|string',
-            'price' => 'required|numeric'
-        ]);
+        $product = Product::create($this->validatedData($request));
 
-        $product = Product::create($request->all());
         return response()->json($product, 201);
     }
 
-    public function show($id)
+    public function show(Product $product): JsonResponse
     {
-        $product = Product::find($id);
-        if (!$product) {
-            return response()->json(['message' => 'Producto no encontrado'], 404);
-        }
-        return response()->json($product, 200);
+        return response()->json($product);
     }
 
-    public function update(Request $request, $id)
+    public function update(Request $request, Product $product): JsonResponse
     {
-        $product = Product::find($id);
-        if (!$product) {
-            return response()->json(['message' => 'Producto no encontrado'], 404);
-        }
-        
-        $product->update($request->all());
-        return response()->json($product, 200);
+        $product->update($this->validatedData($request, $product));
+
+        return response()->json($product->fresh());
     }
 
-    public function destroy($id)
+    public function destroy(Product $product): JsonResponse
     {
-        $product = Product::find($id);
-        if (!$product) {
-            return response()->json(['message' => 'Producto no encontrado'], 404);
-        }
-        
         $product->delete();
-        return response()->json(['message' => 'Producto eliminado'], 200);
+
+        return response()->json(['message' => 'Producto eliminado correctamente.']);
+    }
+
+    private function validatedData(Request $request, ?Product $product = null): array
+    {
+        $rules = [
+            'sku' => ['required', 'string', 'max:40', Rule::unique(Product::class, 'sku')->ignore($product)],
+            'name' => ['required', 'string', 'min:2', 'max:120'],
+            'description' => ['nullable', 'string', 'max:1000'],
+            'price' => ['required', 'numeric', 'min:0', 'max:999999.99'],
+            'currency' => ['sometimes', 'string', 'size:3'],
+            'stock' => ['required', 'integer', 'min:0', 'max:1000000'],
+            'is_active' => ['sometimes', 'boolean'],
+        ];
+
+        $data = $request->validate($rules);
+
+        return [
+            ...$data,
+            'sku' => strtoupper(trim($data['sku'])),
+            'name' => trim($data['name']),
+            'description' => $data['description'] ?? null,
+            'currency' => strtoupper($data['currency'] ?? 'MXN'),
+            'is_active' => $data['is_active'] ?? true,
+        ];
     }
 }

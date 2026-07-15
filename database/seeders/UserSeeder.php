@@ -2,29 +2,24 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
 use App\Models\User;
-use Illuminate\Support\Facades\Hash;
+use Illuminate\Database\Seeder;
 
 class UserSeeder extends Seeder
 {
     public function run(): void
     {
-        // 1. Crear el usuario Administrador
-        User::create([
-            'name' => 'Admin Principal',
-            'email' => 'admin@proyecto.com',
-            'password' => Hash::make('password123'),
-            'role' => 'admin'
-        ]);
+        // Estas cuentas eran únicamente perfiles de demostración anteriores.
+        User::whereIn('email', ['buyer@subarg.test', 'user@subarg.test'])->delete();
 
-        // 2. Crear un Usuario Registrado normal
-        User::create([
-            'name' => 'Cliente Frecuente',
-            'email' => 'cliente@proyecto.com',
-            'password' => Hash::make('password123'),
-            'role' => 'user'
-        ]);
+        User::updateOrCreate(
+            ['email' => 'admin@subarg.test'],
+            [
+                'name' => 'Administrador Demo',
+                'password' => 'password123',
+                'role' => 'admin',
+                'status' => 'active',
+            ],
+        );
     }
 }
-

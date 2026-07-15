@@ -2,15 +2,30 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use MongoDB\Laravel\Eloquent\Model;
 
 class Product extends Model
 {
-    // Agregamos esto para permitir guardar estos campos
-   protected $fillable = [
+    protected $connection = 'mongodb';
+
+    protected $table = 'products';
+
+    protected $fillable = [
+        'sku',
         'name',
         'price',
+        'currency',
         'stock',
-        'description'
+        'description',
+        'is_active',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'price' => 'decimal:2',
+            'stock' => 'integer',
+            'is_active' => 'boolean',
+        ];
+    }
 }

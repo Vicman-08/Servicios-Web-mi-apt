@@ -1,58 +1,106 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Servicios Web Subarg
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+API REST y panel web de demostración construido con Laravel 13, MongoDB y Sanctum. El proyecto permite probar un CRUD completo, autenticación por token y una experiencia tipo tienda: observador público, cliente registrado y administrador.
 
-## About Laravel
+## Funciones incluidas
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+- CRUD de productos con `GET`, `POST`, `PATCH/PUT` y `DELETE`.
+- CRUD de usuarios exclusivo para administradores.
+- Catálogo público para observadores sin cuenta.
+- Registro público que crea siempre una cuenta de cliente, nunca de administrador.
+- Inicio y cierre de sesión mediante tokens almacenados en MongoDB.
+- Tokens con duración de 5 minutos, contador visible y cierre automático de sesión.
+- Compra y cancelación de productos con actualización segura de existencias.
+- Historial de compras y movimientos de inventario.
+- Interfaz gráfica adaptable a computadora y celular.
+- Inspector visual que muestra el método HTTP, la ruta y el código de respuesta de cada acción.
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Colecciones de MongoDB
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+- `users`
+- `products`
+- `orders`
+- `inventory_movements`
+- `personal_access_tokens`
 
-## Learning Laravel
+Las migraciones también crean índices únicos, validaciones de documentos y las colecciones auxiliares de Laravel.
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+## Preparación inicial
 
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
-
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
-
-## Agentic Development
-
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+Se necesita PHP 8.3 o posterior, Composer, Node.js, la extensión `mongodb` de PHP y un servidor MongoDB local.
 
 ```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+composer install
+npm install
+cp .env.example .env
+php artisan key:generate
+php artisan migrate:fresh --seed
+npm run build
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+> `migrate:fresh` elimina los datos anteriores de la base configurada. Debe utilizarse solamente para preparar o reiniciar la demostración.
 
-## Contributing
+## Abrirlo desde otra computadora
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+En la computadora donde está el proyecto, inicia MongoDB y después ejecuta:
 
-## Code of Conduct
+```bash
+php artisan serve --host=0.0.0.0 --port=8000
+```
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+Consulta la dirección IP local de esa computadora:
 
-## Security Vulnerabilities
+- macOS: `ipconfig getifaddr en0`
+- Windows: `ipconfig`
+- Linux: `hostname -I`
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+Si la dirección obtenida fuera `192.168.1.25`, desde la otra laptop abre:
 
-## License
+```text
+http://192.168.1.25:8000
+```
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+Las dos computadoras deben estar conectadas a la misma red. Si el sistema pregunta si PHP puede aceptar conexiones entrantes, hay que permitirlo en la red privada.
+
+MongoDB no necesita exponerse a la red: solamente la computadora que ejecuta Laravel se conecta a `127.0.0.1:27017`.
+
+## Accesos y registro
+
+| Rol | Correo | Contraseña | Permisos |
+|---|---|---|---|
+| Administrador | `admin@subarg.test` | `password123` | CRUD de productos y usuarios; consulta y cancela compras |
+| Observador | No necesita cuenta | No necesita contraseña | Consulta el catálogo público |
+
+Los clientes se crean desde el botón **Crear cuenta**. Después del registro pueden comprar y cancelar sus propias compras.
+
+## Rutas principales
+
+| Método | Ruta | Uso | Permiso |
+|---|---|---|---|
+| `POST` | `/api/login` | Iniciar sesión | Público |
+| `POST` | `/api/register` | Registrar cuenta de cliente | Público |
+| `GET` | `/api/products` | Listar productos | Público |
+| `GET` | `/api/products/{id}` | Consultar producto | Público |
+| `POST` | `/api/products` | Crear producto | Administrador |
+| `PATCH/PUT` | `/api/products/{id}` | Actualizar producto | Administrador |
+| `DELETE` | `/api/products/{id}` | Eliminar producto | Administrador |
+| `GET/POST/PATCH/DELETE` | `/api/users` | CRUD de usuarios | Administrador |
+| `GET/POST` | `/api/orders` | Consultar o crear compras | Cliente y administrador |
+| `DELETE` | `/api/orders/{id}` | Cancelar compra | Propietario o administrador |
+
+Las rutas protegidas reciben el token en el encabezado:
+
+```text
+Authorization: Bearer TOKEN
+Accept: application/json
+```
+
+## Pruebas automáticas
+
+Las pruebas utilizan la base separada `servicios_web_subarg_test`:
+
+```bash
+php artisan test
+```
+
+Cubren registro automático como cliente, inicio de sesión real con token MongoDB, catálogo público del observador, restricciones de compra, CRUD de productos, CRUD de usuarios, compra, inventario insuficiente y cancelación.

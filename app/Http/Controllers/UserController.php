@@ -3,104 +3,140 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rule;
 
 class UserController extends Controller
 {
-    // GET: Listar todos los usuarios
-    public function index()
+    public function index(): JsonResponse
     {
-        return response()->json(User::all(), 200);
+        return response()->json(User::orderBy('created_at', 'desc')->get());
     }
 
-    // POST: Crear un nuevo usuario
-    public function store(Request $request)
+    public function register(Request $request): JsonResponse
     {
-        $request->validate([
-            'name' => 'required|string',
-            'email' => 'required|email|unique:users',
-            'password' => 'required|string|min:6',
-            'role' => 'nullable|string'
+        $data = $request->validate([
+            'name' => ['required', 'string', 'min:2', 'max:100'],
+            'email' => ['required', 'email', 'max:150', Rule::unique(User::class, 'email')],
+            'password' => ['required', 'string', 'min:8', 'max:72'],
         ]);
 
         $user = User::create([
-            'name' => $request->name,
-            'email' => $request->email,
-            'password' => Hash::make($request->password), 
-            'role' => $request->role ?? 'user' 
+            'name' => trim($data['name']),
+            'email' => strtolower($data['email']),
+            'password' => $data['password'],
+            'role' => 'buyer',
+            'status' => 'active',
         ]);
 
         return response()->json($user, 201);
     }
 
-    // GET: Mostrar un solo usuario por su ID
-    public function show($id)
+    public function store(Request $request): JsonResponse
     {
-        $user = User::find($id);
-        if (!$user) {
-            return response()->json(['message' => 'Usuario no encontrado'], 404);
-        }
-        return response()->json($user, 200);
+        $data = $request->validate([
+            'name' => ['required', 'string', 'min:2', 'max:100'],
+            'email' => ['required', 'email', 'max:150', Rule::unique(User::class, 'email')],
+            'password' => ['required', 'string', 'min:8', 'max:72'],
+            'role' => ['required', Rule::in(['admin', 'buyer'])],
+            'status' => ['sometimes', Rule::in(['active', 'disabled'])],
+        ]);
+
+        $user = User::create([
+            ...$data,
+            'name' => trim($data['name']),
+            'email' => strtolower($data['email']),
+            'status' => $data['status'] ?? 'active',
+        ]);
+
+        return response()->json($user, 201);
     }
 
-    // PUT/PATCH: Actualizar un usuario
-    public function update(Request $request, $id)
+    public function show(User $user): JsonResponse
     {
-        $user = User::find($id);
-        
-        if (!$user) {
-            return response()->json(['message' => 'Usuario no encontrado'], 404);
+        return response()->json($user);
+    }
+
+    public function update(Request $request, User $user): JsonResponse
+    {
+        $data = $request->validate([
+            'name' => ['sometimes', 'required', 'string', 'min:2', 'max:100'],
+            'email' => ['sometimes', 'required', 'email', 'max:150', Rule::unique(User::class, 'email')->ignore($user)],
+            'password' => ['nullable', 'string', 'min:8', 'max:72'],
+            'role' => ['sometimes', Rule::in(['admin', 'buyer'])],
+            'status' => ['sometimes', Rule::in(['active', 'disabled'])],
+        ]);
+
+        if (array_key_exists('name', $data)) {
+            $data['name'] = trim($data['name']);
         }
 
-        $data = $request->all();
+        if (array_key_exists('email', $data)) {
+            $data['email'] = strtolower($data['email']);
+        }
 
-        // Si envían una nueva contraseña, la encriptamos
-        if ($request->has('password')) {
-            $data['password'] = Hash::make($request->password);
+        if (empty($data['password'])) {
+            unset($data['password']);
         }
 
         $user->update($data);
-        
-        return response()->json($user, 200);
+
+        return response()->json($user->fresh());
     }
 
-    // DELETE: Eliminar un usuario
-    public function destroy($id)
+    public function destroy(Request $request, User $user): JsonResponse
     {
-        $user = User::find($id);
-        
-        if (!$user) {
-            return response()->json(['message' => 'Usuario no encontrado'], 404);
+        if ($request->user()->is($user)) {
+            return response()->json(['message' => 'No puedes eliminar tu propia cuenta.'], 422);
         }
 
+        $user->tokens()->delete();
         $user->delete();
-        return response()->json(['message' => 'Usuario eliminado correctamente'], 200);
+
+        return response()->json(['message' => 'Usuario eliminado correctamente.']);
     }
 
-    public function login(Request $request)
+    public function login(Request $request): JsonResponse
     {
-        // 1. Validar que envíen datos
-        $request->validate([
-            'email' => 'required|email',
-            'password' => 'required'
+        $data = $request->validate([
+            'email' => ['required', 'email'],
+            'password' => ['required', 'string'],
         ]);
 
-        // 2. Buscar al usuario
-        $user = User::where('email', $request->email)->first();
+        $user = User::where('email', strtolower($data['email']))->first();
 
-        // 3. Verificar contraseña
-        if (!$user || !Hash::check($request->password, $user->password)) {
-            return response()->json(['message' => 'Credenciales incorrectas'], 401);
+        if (! $user || ! Hash::check($data['password'], $user->password)) {
+            return response()->json(['message' => 'Credenciales incorrectas.'], 401);
         }
 
-        // 4. Generar el Token
-        $token = $user->createToken('auth_token')->plainTextToken;
+        if (($user->status ?? 'active') !== 'active') {
+            return response()->json(['message' => 'La cuenta está deshabilitada.'], 403);
+        }
+
+        $expirationMinutes = max(1, (int) config('sanctum.expiration', 5));
+        $expiresAt = now()->addMinutes($expirationMinutes);
+        $token = $user->createToken('interfaz-web', ['*'], $expiresAt)->plainTextToken;
 
         return response()->json([
-            'message' => 'Login exitoso',
+            'message' => 'Inicio de sesión exitoso.',
             'token' => $token,
-            'role' => $user->role
-        ], 200);
+            'expires_at' => $expiresAt->toIso8601String(),
+            'expires_in' => $expirationMinutes * 60,
+            'user' => $user,
+        ]);
+    }
+
+    public function me(Request $request): JsonResponse
+    {
+        return response()->json($request->user());
+    }
+
+    public function logout(Request $request): JsonResponse
+    {
+        $request->user()->currentAccessToken()?->delete();
+
+        return response()->json(['message' => 'Sesión cerrada.']);
     }
 }
