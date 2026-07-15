@@ -1,6 +1,8 @@
 <?php
 
+use App\Http\Controllers\CartController;
 use App\Http\Controllers\CategoryController;
+use App\Http\Controllers\CheckoutController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\InventoryController;
 use App\Http\Controllers\OrderController;
@@ -25,9 +27,16 @@ Route::prefix('v1')->name('api.v1.')->group(function (): void {
         Route::patch('me', [UserController::class, 'updateProfile'])->name('me.update');
         Route::post('auth/logout', [UserController::class, 'logout'])->name('auth.logout');
 
-        // Clientes y administradores pueden crear, consultar y cancelar compras.
+        // Carrito y checkout para clientes y administradores.
+        Route::get('cart', [CartController::class, 'show'])->can('buyer-access')->name('cart.show');
+        Route::post('cart/items', [CartController::class, 'storeItem'])->can('buyer-access')->name('cart.items.store');
+        Route::patch('cart/items/{productId}', [CartController::class, 'updateItem'])->can('buyer-access')->name('cart.items.update');
+        Route::delete('cart/items/{productId}', [CartController::class, 'destroyItem'])->can('buyer-access')->name('cart.items.destroy');
+        Route::delete('cart', [CartController::class, 'clear'])->can('buyer-access')->name('cart.clear');
+        Route::post('checkout', CheckoutController::class)->can('buyer-access')->name('checkout.store');
+
+        // Clientes y administradores pueden consultar y cancelar compras.
         Route::get('orders', [OrderController::class, 'index'])->can('buyer-access')->name('orders.index');
-        Route::post('orders', [OrderController::class, 'store'])->can('buyer-access')->name('orders.store');
         Route::get('orders/{order}', [OrderController::class, 'show'])->can('buyer-access')->name('orders.show');
         Route::delete('orders/{order}', [OrderController::class, 'destroy'])->can('buyer-access')->name('orders.destroy');
 

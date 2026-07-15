@@ -12,11 +12,14 @@ La API pública actual está versionada bajo el prefijo `/api/v1`. Las respuesta
 - Registro público que crea siempre una cuenta de cliente, nunca de administrador.
 - Inicio y cierre de sesión mediante tokens almacenados en MongoDB.
 - Tokens con duración de 5 minutos, contador visible y cierre automático de sesión.
-- Compra y cancelación de productos con actualización segura de existencias.
+- Carrito persistente por cliente: agregar, cambiar cantidades, eliminar y vaciar.
+- Checkout de varios productos con cálculo de subtotal y total.
+- Compra y cancelación de órdenes con actualización segura de existencias.
+- Reversión automática del inventario si algún producto del carrito ya no tiene existencias.
 - Historial de compras y movimientos de inventario.
 - Respuestas JSON uniformes y listados paginados.
 - Perfil de cliente preparado para teléfono y direcciones.
-- Modelo documental preparado para categorías, carrito e interacciones con IA.
+- Modelo documental implementado para categorías y carrito; preparado para interacciones con IA.
 - CRUD administrativo de categorías y consulta pública de categorías activas.
 - Filtros administrativos de productos, usuarios, compras e inventario.
 - Cambios controlados del estado de las órdenes.
@@ -108,7 +111,13 @@ Los clientes se crean desde el botón **Crear cuenta**. Después del registro pu
 | `PATCH` | `/api/v1/admin/orders/{id}/status` | Cambiar el estado de una compra | Administrador |
 | `GET` | `/api/v1/admin/inventory-movements` | Consultar movimientos de inventario | Administrador |
 | `POST` | `/api/v1/admin/inventory-adjustments` | Ajustar existencias | Administrador |
-| `GET/POST` | `/api/v1/orders` | Consultar o crear compras | Cliente y administrador |
+| `GET` | `/api/v1/cart` | Consultar carrito y totales | Cliente y administrador |
+| `POST` | `/api/v1/cart/items` | Agregar un producto | Cliente y administrador |
+| `PATCH` | `/api/v1/cart/items/{productId}` | Cambiar una cantidad | Cliente y administrador |
+| `DELETE` | `/api/v1/cart/items/{productId}` | Quitar un producto | Cliente y administrador |
+| `DELETE` | `/api/v1/cart` | Vaciar carrito | Cliente y administrador |
+| `POST` | `/api/v1/checkout` | Confirmar carrito y crear una compra | Cliente y administrador |
+| `GET` | `/api/v1/orders` | Consultar compras propias | Cliente y administrador |
 | `DELETE` | `/api/v1/orders/{id}` | Cancelar compra | Propietario o administrador |
 
 Las rutas protegidas reciben el token en el encabezado:

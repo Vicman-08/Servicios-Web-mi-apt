@@ -67,6 +67,7 @@
             <main class="dashboard">
                 <nav class="tabs" aria-label="Secciones del panel">
                     <button class="tab active" type="button" data-tab="products">Productos</button>
+                    <button id="cart-tab" class="tab" type="button" data-tab="cart" hidden>Carrito</button>
                     <button id="users-tab" class="tab" type="button" data-tab="users" hidden>Usuarios</button>
                     <button id="orders-tab" class="tab" type="button" data-tab="orders" hidden>Compras</button>
                 </nav>
@@ -98,6 +99,22 @@
                     </form>
 
                     <div id="products-grid" class="product-grid" aria-live="polite"></div>
+                </section>
+
+                <section id="cart-section" class="tab-section" hidden>
+                    <div class="section-heading">
+                        <div>
+                            <h2>Tu carrito</h2>
+                            <p class="muted">Revisa las cantidades antes de confirmar la compra.</p>
+                        </div>
+                        <button id="clear-cart-button" class="danger-button" type="button">Vaciar carrito</button>
+                    </div>
+                    <div id="cart-list" class="orders-list" aria-live="polite"></div>
+                    <aside id="cart-summary" class="cart-summary" hidden>
+                        <div><span>Productos</span><strong id="cart-item-count">0</strong></div>
+                        <div><span>Total</span><strong id="cart-total">$0.00</strong></div>
+                        <button id="checkout-button" class="primary-button" type="button">Confirmar compra</button>
+                    </aside>
                 </section>
 
                 <section id="users-section" class="tab-section" hidden>

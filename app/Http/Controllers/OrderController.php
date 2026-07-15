@@ -10,8 +10,6 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Validation\Rule;
-use MongoDB\BSON\Decimal128;
-use Throwable;
 
 class OrderController extends Controller
 {
@@ -48,69 +46,6 @@ class OrderController extends Controller
                 ->paginate($data['per_page'] ?? 20)
                 ->withQueryString(),
         );
-    }
-
-    public function store(Request $request): JsonResponse
-    {
-        $data = $request->validate([
-            'product_id' => ['required', 'string'],
-            'quantity' => ['required', 'integer', 'min:1', 'max:100'],
-        ]);
-
-        $product = Product::find($data['product_id']);
-
-        if (! $product || ! $product->is_active) {
-            return response()->json(['message' => 'El producto no está disponible.'], 404);
-        }
-
-        $stockBefore = $product->stock;
-        $updated = Product::where('_id', $product->getKey())
-            ->where('is_active', true)
-            ->where('stock', '>=', $data['quantity'])
-            ->decrement('stock', $data['quantity'], ['updated_at' => now()]);
-
-        if ($updated !== 1) {
-            return response()->json(['message' => 'No hay existencias suficientes.'], 422);
-        }
-
-        $unitPrice = (string) $product->price;
-        $subtotal = number_format(((float) $unitPrice) * $data['quantity'], 2, '.', '');
-
-        try {
-            $order = Order::create([
-                'user_id' => (string) $request->user()->getKey(),
-                'items' => [[
-                    'product_id' => (string) $product->getKey(),
-                    'sku' => $product->sku,
-                    'name' => $product->name,
-                    'unit_price' => new Decimal128($unitPrice),
-                    'quantity' => $data['quantity'],
-                    'subtotal' => new Decimal128($subtotal),
-                ]],
-                'subtotal' => $subtotal,
-                'tax' => '0.00',
-                'shipping_cost' => '0.00',
-                'total' => $subtotal,
-                'currency' => $product->currency,
-                'status' => 'completed',
-                'payment_status' => 'paid',
-            ]);
-
-            InventoryMovement::create([
-                'product_id' => (string) $product->getKey(),
-                'order_id' => (string) $order->getKey(),
-                'user_id' => (string) $request->user()->getKey(),
-                'type' => 'sale',
-                'quantity_delta' => -$data['quantity'],
-                'stock_before' => $stockBefore,
-                'stock_after' => $stockBefore - $data['quantity'],
-            ]);
-        } catch (Throwable $exception) {
-            Product::where('_id', $product->getKey())->increment('stock', $data['quantity'], ['updated_at' => now()]);
-            throw $exception;
-        }
-
-        return (new OrderResource($order))->response()->setStatusCode(201);
     }
 
     public function show(Request $request, Order $order): OrderResource

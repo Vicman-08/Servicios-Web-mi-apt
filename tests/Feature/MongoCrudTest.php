@@ -5,6 +5,8 @@ namespace Tests\Feature;
 use App\Models\AiInteraction;
 use App\Models\Cart;
 use App\Models\Category;
+use App\Models\InventoryMovement;
+use App\Models\Order;
 use App\Models\Product;
 use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
@@ -107,10 +109,12 @@ class MongoCrudTest extends TestCase
             'stock' => 1,
         ])->assertUnauthorized();
 
-        $this->postJson('/api/v1/orders', [
+        $this->postJson('/api/v1/cart/items', [
             'product_id' => (string) Product::firstOrFail()->getKey(),
             'quantity' => 1,
         ])->assertUnauthorized();
+
+        $this->postJson('/api/v1/checkout')->assertUnauthorized();
     }
 
     public function test_admin_can_use_the_user_crud(): void
@@ -150,20 +154,164 @@ class MongoCrudTest extends TestCase
 
         Sanctum::actingAs($buyer);
 
-        $order = $this->postJson('/api/v1/orders', [
+        $this->postJson('/api/v1/cart/items', [
             'product_id' => (string) $product->getKey(),
             'quantity' => 2,
-        ])->assertCreated();
+        ])->assertOk();
+
+        $order = $this->postJson('/api/v1/checkout')->assertCreated();
 
         $this->assertSame(1, $product->fresh()->stock);
 
-        $this->postJson('/api/v1/orders', [
+        $this->postJson('/api/v1/cart/items', [
             'product_id' => (string) $product->getKey(),
             'quantity' => 2,
         ])->assertUnprocessable();
 
         $this->deleteJson('/api/v1/orders/'.$order->json('data.id'))->assertOk();
         $this->assertSame(3, $product->fresh()->stock);
+    }
+
+    public function test_buyer_can_manage_cart_and_see_calculated_totals(): void
+    {
+        $buyer = $this->user('buyer');
+        $first = Product::create([
+            'sku' => 'CART-001',
+            'name' => 'Primer producto',
+            'description' => null,
+            'price' => '25.50',
+            'currency' => 'MXN',
+            'stock' => 10,
+            'is_active' => true,
+        ]);
+        $second = Product::create([
+            'sku' => 'CART-002',
+            'name' => 'Segundo producto',
+            'description' => null,
+            'price' => '10.00',
+            'currency' => 'MXN',
+            'stock' => 5,
+            'is_active' => true,
+        ]);
+
+        Sanctum::actingAs($buyer);
+
+        $this->getJson('/api/v1/cart')
+            ->assertOk()
+            ->assertJsonPath('data.total', '0.00');
+
+        $this->postJson('/api/v1/cart/items', [
+            'product_id' => (string) $first->getKey(),
+            'quantity' => 1,
+        ])->assertOk();
+
+        $this->postJson('/api/v1/cart/items', [
+            'product_id' => (string) $first->getKey(),
+            'quantity' => 2,
+        ])->assertOk()
+            ->assertJsonPath('data.item_count', 3)
+            ->assertJsonPath('data.total', '76.50');
+
+        $this->postJson('/api/v1/cart/items', [
+            'product_id' => (string) $second->getKey(),
+            'quantity' => 2,
+        ])->assertOk()
+            ->assertJsonPath('data.item_count', 5)
+            ->assertJsonPath('data.total', '96.50');
+
+        $this->patchJson('/api/v1/cart/items/'.$first->getKey(), [
+            'quantity' => 2,
+        ])->assertOk()
+            ->assertJsonPath('data.item_count', 4)
+            ->assertJsonPath('data.total', '71.00');
+
+        $this->deleteJson('/api/v1/cart/items/'.$second->getKey())
+            ->assertOk()
+            ->assertJsonCount(1, 'data.items');
+
+        $this->deleteJson('/api/v1/cart')
+            ->assertOk()
+            ->assertJsonCount(0, 'data.items')
+            ->assertJsonPath('data.total', '0.00');
+    }
+
+    public function test_checkout_creates_one_multi_product_order_and_cancellation_restores_stock(): void
+    {
+        $buyer = $this->user('buyer');
+        $first = Product::create([
+            'sku' => 'CHECKOUT-001',
+            'name' => 'Producto A',
+            'description' => null,
+            'price' => '30.00',
+            'currency' => 'MXN',
+            'stock' => 5,
+            'is_active' => true,
+        ]);
+        $second = Product::create([
+            'sku' => 'CHECKOUT-002',
+            'name' => 'Producto B',
+            'description' => null,
+            'price' => '12.50',
+            'currency' => 'MXN',
+            'stock' => 4,
+            'is_active' => true,
+        ]);
+
+        Sanctum::actingAs($buyer);
+        $this->postJson('/api/v1/cart/items', ['product_id' => (string) $first->getKey(), 'quantity' => 2])->assertOk();
+        $this->postJson('/api/v1/cart/items', ['product_id' => (string) $second->getKey(), 'quantity' => 3])->assertOk();
+
+        $order = $this->postJson('/api/v1/checkout')
+            ->assertCreated()
+            ->assertJsonCount(2, 'data.items')
+            ->assertJsonPath('data.total', '97.50')
+            ->assertJsonPath('data.status', 'confirmed');
+
+        $this->assertSame(3, $first->fresh()->stock);
+        $this->assertSame(1, $second->fresh()->stock);
+        $this->assertSame(2, InventoryMovement::where('type', 'sale')->count());
+        $this->getJson('/api/v1/cart')->assertOk()->assertJsonCount(0, 'data.items');
+
+        $this->deleteJson('/api/v1/orders/'.$order->json('data.id'))->assertOk();
+        $this->assertSame(5, $first->fresh()->stock);
+        $this->assertSame(4, $second->fresh()->stock);
+        $this->assertSame(2, InventoryMovement::where('type', 'cancellation')->count());
+    }
+
+    public function test_checkout_rolls_back_previous_stock_changes_when_an_item_is_insufficient(): void
+    {
+        $buyer = $this->user('buyer');
+        $first = Product::create([
+            'sku' => 'ROLLBACK-001',
+            'name' => 'Producto con inventario',
+            'description' => null,
+            'price' => '20.00',
+            'currency' => 'MXN',
+            'stock' => 5,
+            'is_active' => true,
+        ]);
+        $second = Product::create([
+            'sku' => 'ROLLBACK-002',
+            'name' => 'Producto agotado después',
+            'description' => null,
+            'price' => '15.00',
+            'currency' => 'MXN',
+            'stock' => 1,
+            'is_active' => true,
+        ]);
+
+        Sanctum::actingAs($buyer);
+        $this->postJson('/api/v1/cart/items', ['product_id' => (string) $first->getKey(), 'quantity' => 2])->assertOk();
+        $this->postJson('/api/v1/cart/items', ['product_id' => (string) $second->getKey(), 'quantity' => 1])->assertOk();
+        $second->update(['stock' => 0]);
+
+        $this->postJson('/api/v1/checkout')->assertUnprocessable();
+
+        $this->assertSame(5, $first->fresh()->stock);
+        $this->assertSame(0, $second->fresh()->stock);
+        $this->assertSame(0, Order::count());
+        $this->assertSame(0, InventoryMovement::count());
+        $this->getJson('/api/v1/cart')->assertOk()->assertJsonCount(2, 'data.items');
     }
 
     public function test_public_catalog_is_paginated_and_filters_inactive_products(): void
@@ -365,10 +513,11 @@ class MongoCrudTest extends TestCase
         ]);
 
         Sanctum::actingAs($buyer);
-        $order = $this->postJson('/api/v1/orders', [
+        $this->postJson('/api/v1/cart/items', [
             'product_id' => (string) $product->getKey(),
             'quantity' => 1,
-        ])->assertCreated();
+        ])->assertOk();
+        $order = $this->postJson('/api/v1/checkout')->assertCreated();
 
         $this->getJson('/api/v1/admin/dashboard')->assertForbidden();
 

@@ -3,6 +3,7 @@ const state = {
     tokenExpiresAt: localStorage.getItem('subarg_token_expires_at'),
     user: null,
     products: [],
+    cart: null,
     users: [],
     orders: [],
 };
@@ -144,6 +145,7 @@ function enterApp() {
     $('#top-register-button').hidden = !isObserver;
     $$('.admin-only').forEach((element) => { element.hidden = !isAdmin; });
     $('#users-tab').hidden = !isAdmin;
+    $('#cart-tab').hidden = !canBuy;
     $('#orders-tab').hidden = !canBuy;
     scheduleSessionExpiry();
 
@@ -178,10 +180,12 @@ function renderProducts() {
                 <button class="ghost-button" data-action="edit-product" data-id="${id}" type="button">Editar</button>
                 <button class="danger-button" data-action="delete-product" data-id="${id}" type="button">Eliminar</button>
             </div>`;
-        } else if (state.user.role === 'buyer') {
-            actions = `<form class="buy-form" data-product-id="${id}">
+        }
+
+        if (['admin', 'buyer'].includes(state.user.role)) {
+            actions += `<form class="buy-form" data-product-id="${id}">
                 <input name="quantity" type="number" min="1" max="${product.stock}" value="1" aria-label="Cantidad" required>
-                <button class="primary-button compact" type="submit" ${product.stock < 1 || !product.is_active ? 'disabled' : ''}>Comprar</button>
+                <button class="primary-button compact" type="submit" ${product.stock < 1 || !product.is_active ? 'disabled' : ''}>Agregar</button>
             </form>`;
         }
 
@@ -192,6 +196,41 @@ function renderProducts() {
             <div class="product-bottom"><span class="price">${money(product.price, product.currency)}</span>${actions}</div>
         </article>`;
     }).join('');
+}
+
+async function loadCart() {
+    try {
+        const response = await api('/cart');
+        state.cart = response.data;
+        renderCart();
+    } catch (error) { showToast(error.message, 'error'); }
+}
+
+function renderCart() {
+    const list = $('#cart-list');
+    const items = state.cart?.items || [];
+    const hasItems = items.length > 0;
+    $('#cart-summary').hidden = !hasItems;
+    $('#clear-cart-button').disabled = !hasItems;
+
+    if (!hasItems) {
+        list.innerHTML = '<div class="empty-state">Tu carrito está vacío. Agrega productos desde el catálogo.</div>';
+        return;
+    }
+
+    list.innerHTML = items.map((item) => `<article class="order-card cart-item">
+        <div><p><strong>${escapeHtml(item.name)}</strong></p><span class="order-meta">${escapeHtml(item.sku || 'No disponible')} · ${money(item.unit_price, item.currency)}</span></div>
+        <form class="cart-quantity-form" data-product-id="${item.product_id}">
+            <input name="quantity" type="number" min="1" max="${item.stock}" value="${item.quantity}" aria-label="Cantidad de ${escapeHtml(item.name)}" required>
+            <button class="ghost-button" type="submit" ${item.is_available ? '' : 'disabled'}>Actualizar</button>
+        </form>
+        <div><strong>${money(item.subtotal, item.currency)}</strong><br><span class="status-badge ${item.is_available ? '' : 'cancelled'}">${item.is_available ? `${item.stock} disponibles` : 'No disponible'}</span></div>
+        <button class="danger-button" data-action="remove-cart-item" data-id="${item.product_id}" type="button">Eliminar</button>
+    </article>`).join('');
+
+    $('#cart-item-count').textContent = state.cart.item_count;
+    $('#cart-total').textContent = money(state.cart.total, state.cart.currency);
+    $('#checkout-button').disabled = items.some((item) => !item.is_available);
 }
 
 function resetProductForm() {
@@ -262,11 +301,11 @@ function renderOrders() {
 
     list.innerHTML = state.orders.map((order) => {
         const id = order.id || order._id;
-        const item = order.items[0];
+        const itemSummary = order.items.map((item) => `${escapeHtml(item.name)} × ${item.quantity}`).join(', ');
         const cancelled = order.status === 'cancelled';
         return `<article class="order-card">
-            <div><p><strong>${escapeHtml(item.name)}</strong> · ${item.quantity} unidad(es)</p><span class="order-meta">${escapeHtml(item.sku)} · ${new Date(order.created_at).toLocaleString('es-MX')}</span></div>
-            <div><strong>${money(order.total, order.currency)}</strong><br><span class="status-badge ${cancelled ? 'cancelled' : ''}">${cancelled ? 'Cancelada' : 'Completada'}</span></div>
+            <div><p><strong>${itemSummary}</strong></p><span class="order-meta">${order.items.length} producto(s) · ${new Date(order.created_at).toLocaleString('es-MX')}</span></div>
+            <div><strong>${money(order.total, order.currency)}</strong><br><span class="status-badge ${cancelled ? 'cancelled' : ''}">${escapeHtml(order.status)}</span></div>
             <button class="danger-button" data-action="cancel-order" data-id="${id}" type="button" ${cancelled ? 'disabled' : ''}>Cancelar</button>
         </article>`;
     }).join('');
@@ -276,6 +315,7 @@ function selectTab(tab) {
     $$('.tab').forEach((button) => button.classList.toggle('active', button.dataset.tab === tab));
     $$('.tab-section').forEach((section) => { section.hidden = section.id !== `${tab}-section`; });
     if (tab === 'users') loadUsers();
+    if (tab === 'cart') loadCart();
     if (tab === 'orders') loadOrders();
 }
 
@@ -375,10 +415,53 @@ $('#products-grid').addEventListener('submit', async (event) => {
     if (!form) return;
     event.preventDefault();
     try {
-        await api('/orders', { method: 'POST', body: { product_id: form.dataset.productId, quantity: Number(form.elements.quantity.value) } });
-        showToast('Compra registrada correctamente.');
-        await loadProducts();
+        await api('/cart/items', { method: 'POST', body: { product_id: form.dataset.productId, quantity: Number(form.elements.quantity.value) } });
+        showToast('Producto agregado al carrito.');
+        form.reset();
     } catch (error) { showToast(error.message, 'error'); }
+});
+
+$('#cart-list').addEventListener('submit', async (event) => {
+    const form = event.target.closest('.cart-quantity-form');
+    if (!form) return;
+    event.preventDefault();
+    try {
+        await api(`/cart/items/${form.dataset.productId}`, {
+            method: 'PATCH',
+            body: { quantity: Number(form.elements.quantity.value) },
+        });
+        showToast('Cantidad actualizada.');
+        loadCart();
+    } catch (error) { showToast(error.message, 'error'); }
+});
+
+$('#cart-list').addEventListener('click', async (event) => {
+    const button = event.target.closest('[data-action="remove-cart-item"]');
+    if (!button) return;
+    try {
+        await api(`/cart/items/${button.dataset.id}`, { method: 'DELETE' });
+        showToast('Producto eliminado del carrito.');
+        loadCart();
+    } catch (error) { showToast(error.message, 'error'); }
+});
+
+$('#clear-cart-button').addEventListener('click', async () => {
+    if (!window.confirm('¿Vaciar todos los productos del carrito?')) return;
+    try {
+        await api('/cart', { method: 'DELETE' });
+        showToast('Carrito vaciado.');
+        loadCart();
+    } catch (error) { showToast(error.message, 'error'); }
+});
+
+$('#checkout-button').addEventListener('click', async () => {
+    if (!window.confirm('¿Confirmar la compra de todos los productos?')) return;
+    try {
+        await api('/checkout', { method: 'POST' });
+        showToast('Compra confirmada correctamente.');
+        await Promise.all([loadCart(), loadProducts(), loadOrders()]);
+        selectTab('orders');
+    } catch (error) { showToast(error.message, 'error'); loadCart(); }
 });
 
 $('#user-form').addEventListener('submit', async (event) => {
