@@ -644,6 +644,21 @@ class MongoCrudTest extends TestCase
             ->assertJsonPath('data.0.duration_ms', 125);
     }
 
+    public function test_administration_has_a_separate_web_console(): void
+    {
+        $this->withoutVite()
+            ->get('/admin')
+            ->assertOk()
+            ->assertSee('Acceso restringido')
+            ->assertSee('Administración')
+            ->assertSee('Productos')
+            ->assertSee('Categorías')
+            ->assertSee('Usuarios')
+            ->assertSee('Órdenes')
+            ->assertSee('Inventario')
+            ->assertSee('Actividad IA');
+    }
+
     public function test_legacy_unversioned_api_is_no_longer_exposed(): void
     {
         $this->getJson('/api/products')->assertNotFound();

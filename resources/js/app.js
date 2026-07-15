@@ -350,6 +350,12 @@ async function login(email, password) {
     state.user = response.data.user;
     localStorage.setItem('subarg_token', state.token);
     localStorage.setItem('subarg_token_expires_at', state.tokenExpiresAt);
+
+    if (state.user.role === 'admin') {
+        window.location.href = '/admin';
+        return;
+    }
+
     enterApp();
 }
 
@@ -585,6 +591,12 @@ async function resumeSession() {
     try {
         const response = await api('/me');
         state.user = response.data;
+
+        if (state.user.role === 'admin') {
+            window.location.href = '/admin';
+            return;
+        }
+
         enterApp();
     } catch (_) {
         enterObserver();

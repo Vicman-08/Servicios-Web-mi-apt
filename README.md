@@ -27,6 +27,8 @@ La API pública actual está versionada bajo el prefijo `/api/v1`. Las respuesta
 - Dashboard administrativo con usuarios, catálogo, compras, ingresos e inventario.
 - Recomendaciones inteligentes del catálogo mediante la API externa de OpenAI.
 - Historial de consultas de IA en MongoDB, disponible para el administrador.
+- Consola web separada en `/admin`, exclusiva para cuentas administrativas.
+- Gestión visual de productos, categorías, usuarios, órdenes, inventario y actividad de IA.
 - Interfaz gráfica adaptable a computadora y celular.
 
 ## Colecciones de MongoDB
@@ -105,6 +107,14 @@ MongoDB no necesita exponerse a la red: solamente la computadora que ejecuta Lar
 
 Los clientes se crean desde el botón **Crear cuenta**. Después del registro pueden comprar y cancelar sus propias compras.
 
+La tienda pública se abre en `/`. La consola administrativa se abre por separado en:
+
+```text
+http://DIRECCION_DEL_SERVIDOR:8000/admin
+```
+
+Si se intenta entrar a esa consola con una cuenta de cliente, el acceso se rechaza. Aunque la página de inicio de sesión es pública, todos sus datos y operaciones permanecen protegidos por token y por el permiso `admin-access` del backend.
+
 ## Rutas principales
 
 | Método | Ruta | Uso | Permiso |
@@ -112,6 +122,7 @@ Los clientes se crean desde el botón **Crear cuenta**. Después del registro pu
 | `POST` | `/api/v1/auth/login` | Iniciar sesión | Público |
 | `POST` | `/api/v1/auth/register` | Registrar cuenta de cliente | Público |
 | `POST` | `/api/v1/auth/logout` | Cerrar la sesión actual | Autenticado |
+| `GET` | `/admin` | Abrir la consola web administrativa | Inicio de sesión administrativo |
 | `GET/PATCH` | `/api/v1/me` | Consultar o actualizar perfil | Autenticado |
 | `GET` | `/api/v1/products` | Listar productos activos y paginados | Público |
 | `GET` | `/api/v1/products/{id}` | Consultar producto | Público |
