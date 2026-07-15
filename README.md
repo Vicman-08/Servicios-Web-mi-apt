@@ -25,7 +25,7 @@ La API pública actual está versionada bajo el prefijo `/api/v1`. Las respuesta
 - Cambios controlados del estado de las órdenes.
 - Ajustes de existencias con historial y protección contra inventario negativo.
 - Dashboard administrativo con usuarios, catálogo, compras, ingresos e inventario.
-- Recomendaciones inteligentes del catálogo mediante la API externa de OpenAI.
+- Recomendaciones inteligentes del catálogo mediante la API externa de Gemini.
 - Historial de consultas de IA en MongoDB, disponible para el administrador.
 - Consola web separada en `/admin`, exclusiva para cuentas administrativas.
 - Gestión visual de productos, categorías, usuarios, órdenes, inventario y actividad de IA.
@@ -57,11 +57,11 @@ php artisan migrate:fresh --seed
 npm run build
 ```
 
-Para activar las recomendaciones externas, agrega una clave de API únicamente en el `.env` del servidor:
+Para activar las recomendaciones externas, crea una clave en [Google AI Studio](https://aistudio.google.com/apikey) y agrégala únicamente en el `.env` del servidor:
 
 ```dotenv
-OPENAI_API_KEY=tu_clave_del_proyecto
-OPENAI_MODEL=gpt-5.6-luna
+GEMINI_API_KEY=tu_clave_de_google_ai_studio
+GEMINI_MODEL=gemini-2.5-flash-lite
 ```
 
 Después limpia la configuración almacenada:
@@ -70,7 +70,7 @@ Después limpia la configuración almacenada:
 php artisan config:clear
 ```
 
-La clave nunca debe escribirse en JavaScript, subirse a GitHub ni incluirse dentro de la aplicación móvil.
+`gemini-2.5-flash-lite` tiene nivel gratuito sujeto a los límites vigentes de Google. La clave nunca debe escribirse en JavaScript, subirse a GitHub ni incluirse dentro de la aplicación móvil: Laravel funciona como intermediario seguro para el frontend web y la futura aplicación móvil.
 
 > `migrate:fresh` elimina los datos anteriores de la base configurada. Debe utilizarse solamente para preparar o reiniciar la demostración.
 
@@ -128,7 +128,7 @@ Si se intenta entrar a esa consola con una cuenta de cliente, el acceso se recha
 | `GET` | `/api/v1/products/{id}` | Consultar producto | Público |
 | `GET` | `/api/v1/categories` | Listar categorías activas | Público |
 | `GET` | `/api/v1/categories/{id}` | Consultar categoría activa | Público |
-| `POST` | `/api/v1/ai/recommendations` | Obtener recomendaciones con OpenAI | Público, máximo 10 solicitudes/minuto |
+| `POST` | `/api/v1/ai/recommendations` | Obtener recomendaciones con Gemini | Público, máximo 10 solicitudes/minuto |
 | `GET` | `/api/v1/admin/dashboard` | Consultar estadísticas generales | Administrador |
 | `GET` | `/api/v1/admin/ai-interactions` | Consultar historial de IA | Administrador |
 | `GET/POST/PATCH/DELETE` | `/api/v1/admin/categories` | CRUD de categorías | Administrador |

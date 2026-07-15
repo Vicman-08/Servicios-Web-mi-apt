@@ -5,13 +5,13 @@ namespace App\Http\Controllers;
 use App\Exceptions\AiServiceException;
 use App\Http\Resources\ProductResource;
 use App\Models\Product;
-use App\Services\OpenAiRecommendationService;
+use App\Services\GeminiRecommendationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class AiRecommendationController extends Controller
 {
-    public function __invoke(Request $request, OpenAiRecommendationService $recommendations): JsonResponse
+    public function __invoke(Request $request, GeminiRecommendationService $recommendations): JsonResponse
     {
         $data = $request->validate([
             'query' => ['required', 'string', 'min:2', 'max:500'],
@@ -31,7 +31,6 @@ class AiRecommendationController extends Controller
                 trim($data['query']),
                 $products,
                 $request->user('sanctum'),
-                (string) $request->ip(),
             );
         } catch (AiServiceException $exception) {
             return response()->json(['message' => $exception->getMessage()], 503);

@@ -541,7 +541,7 @@ class MongoCrudTest extends TestCase
             ->assertJsonPath('data.products.total', 1);
     }
 
-    public function test_public_ai_route_consumes_openai_and_returns_only_catalog_products(): void
+    public function test_public_ai_route_consumes_gemini_and_returns_only_catalog_products(): void
     {
         $product = Product::create([
             'sku' => 'AI-001',
@@ -553,48 +553,53 @@ class MongoCrudTest extends TestCase
             'is_active' => true,
             'tags' => ['oficina'],
         ]);
-        config()->set('services.openai.key', 'test-openai-key');
-        config()->set('services.openai.model', 'gpt-5.6-luna');
-        config()->set('services.openai.base_url', 'https://api.openai.com/v1');
+        config()->set('services.gemini.key', 'test-gemini-key');
+        config()->set('services.gemini.model', 'gemini-2.5-flash-lite');
+        config()->set('services.gemini.base_url', 'https://generativelanguage.googleapis.com/v1beta');
 
         Http::fake([
-            'https://api.openai.com/v1/responses' => Http::response([
-                'id' => 'resp_test_123',
-                'model' => 'gpt-5.6-luna-2026-07-01',
-                'output' => [[
-                    'type' => 'message',
-                    'content' => [[
-                        'type' => 'output_text',
-                        'text' => json_encode([
-                            'answer' => 'Este teclado es una buena opción para trabajar.',
-                            'recommended_product_ids' => [(string) $product->getKey(), 'id-inventado'],
-                        ]),
-                    ]],
+            'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent' => Http::response([
+                'modelVersion' => 'gemini-2.5-flash-lite-001',
+                'candidates' => [[
+                    'content' => [
+                        'role' => 'model',
+                        'parts' => [[
+                            'text' => json_encode([
+                                'answer' => 'Este teclado es una buena opción para trabajar.',
+                                'recommended_product_ids' => [(string) $product->getKey(), 'id-inventado'],
+                            ]),
+                        ]],
+                    ],
+                    'finishReason' => 'STOP',
                 ]],
-                'usage' => ['input_tokens' => 100, 'output_tokens' => 30, 'total_tokens' => 130],
+                'usageMetadata' => [
+                    'promptTokenCount' => 100,
+                    'candidatesTokenCount' => 30,
+                    'totalTokenCount' => 130,
+                ],
             ]),
         ]);
 
         $this->postJson('/api/v1/ai/recommendations', [
             'query' => 'Necesito un teclado para trabajar por menos de mil pesos',
         ])->assertOk()
-            ->assertJsonPath('data.provider', 'openai')
-            ->assertJsonPath('data.model', 'gpt-5.6-luna-2026-07-01')
+            ->assertJsonPath('data.provider', 'gemini')
+            ->assertJsonPath('data.model', 'gemini-2.5-flash-lite-001')
             ->assertJsonCount(1, 'data.recommendations')
             ->assertJsonPath('data.recommendations.0.id', (string) $product->getKey());
 
         $interaction = AiInteraction::firstOrFail();
         $this->assertSame('success', $interaction->status);
-        $this->assertSame('openai', $interaction->provider);
+        $this->assertSame('gemini', $interaction->provider);
         $this->assertNull($interaction->user_id);
         $this->assertSame([(string) $product->getKey()], $interaction->metadata['recommended_product_ids']);
 
         Http::assertSent(function ($request) use ($product): bool {
-            return $request->url() === 'https://api.openai.com/v1/responses'
-                && $request->hasHeader('Authorization', 'Bearer test-openai-key')
-                && $request['store'] === false
-                && $request['text']['format']['type'] === 'json_schema'
-                && str_contains($request['input'], (string) $product->getKey());
+            return $request->url() === 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent'
+                && $request->hasHeader('x-goog-api-key', 'test-gemini-key')
+                && $request['generationConfig']['responseFormat']['text']['mimeType'] === 'application/json'
+                && $request['generationConfig']['responseFormat']['text']['schema']['type'] === 'object'
+                && str_contains($request['contents'][0]['parts'][0]['text'], (string) $product->getKey());
         });
     }
 
@@ -609,12 +614,12 @@ class MongoCrudTest extends TestCase
             'stock' => 1,
             'is_active' => true,
         ]);
-        config()->set('services.openai.key', null);
+        config()->set('services.gemini.key', null);
 
         $this->postJson('/api/v1/ai/recommendations', [
             'query' => 'Recomiéndame algo',
         ])->assertStatus(503)
-            ->assertJsonPath('message', 'El servicio de IA no está configurado. Agrega OPENAI_API_KEY en el archivo .env del servidor.');
+            ->assertJsonPath('message', 'El servicio de IA no está configurado. Agrega GEMINI_API_KEY en el archivo .env del servidor.');
 
         $this->assertSame('error', AiInteraction::firstOrFail()->status);
         Http::assertNothingSent();
@@ -626,8 +631,8 @@ class MongoCrudTest extends TestCase
             'user_id' => null,
             'query' => 'Consulta guardada',
             'response' => 'Respuesta guardada',
-            'provider' => 'openai',
-            'model' => 'gpt-5.6-luna',
+            'provider' => 'gemini',
+            'model' => 'gemini-2.5-flash-lite',
             'status' => 'success',
             'duration_ms' => 125,
             'metadata' => ['external_id' => 'resp_test'],
@@ -640,7 +645,7 @@ class MongoCrudTest extends TestCase
         $this->getJson('/api/v1/admin/ai-interactions?status=success')
             ->assertOk()
             ->assertJsonCount(1, 'data')
-            ->assertJsonPath('data.0.provider', 'openai')
+            ->assertJsonPath('data.0.provider', 'gemini')
             ->assertJsonPath('data.0.duration_ms', 125);
     }
 

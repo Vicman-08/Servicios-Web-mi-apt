@@ -11,46 +11,51 @@ use Illuminate\Support\Facades\Http;
 use JsonException;
 use Throwable;
 
-class OpenAiRecommendationService
+class GeminiRecommendationService
 {
     /**
      * @param  Collection<int, Product>  $products
      * @return array{answer: string, recommended_product_ids: array<int, string>, provider: string, model: string}
      */
-    public function recommend(string $query, Collection $products, ?User $user, string $anonymousIdentifier): array
+    public function recommend(string $query, Collection $products, ?User $user): array
     {
         $startedAt = hrtime(true);
-        $model = (string) config('services.openai.model', 'gpt-5.6-luna');
-        $key = (string) config('services.openai.key');
+        $model = (string) config('services.gemini.model', 'gemini-2.5-flash-lite');
+        $key = (string) config('services.gemini.key');
 
         if ($key === '') {
-            $message = 'El servicio de IA no está configurado. Agrega OPENAI_API_KEY en el archivo .env del servidor.';
+            $message = 'El servicio de IA no está configurado. Agrega GEMINI_API_KEY en el archivo .env del servidor.';
             $this->record($user, $query, null, $model, 'error', $startedAt, ['error' => 'missing_api_key']);
 
             throw new AiServiceException($message);
         }
 
         try {
-            $response = Http::baseUrl(rtrim((string) config('services.openai.base_url'), '/'))
-                ->withToken($key)
+            $response = Http::baseUrl(rtrim((string) config('services.gemini.base_url'), '/'))
+                ->withHeaders(['x-goog-api-key' => $key])
                 ->acceptJson()
-                ->timeout((int) config('services.openai.timeout', 30))
-                ->post('/responses', [
-                    'model' => $model,
-                    'store' => false,
-                    'instructions' => $this->instructions(),
-                    'input' => $this->input($query, $products),
-                    'reasoning' => ['effort' => 'low'],
-                    'max_output_tokens' => 500,
-                    'safety_identifier' => hash('sha256', $user?->getKey() ?: $anonymousIdentifier),
-                    'text' => [
-                        'verbosity' => 'low',
-                        'format' => $this->responseFormat(),
+                ->timeout((int) config('services.gemini.timeout', 30))
+                ->post("/models/{$model}:generateContent", [
+                    'systemInstruction' => [
+                        'parts' => [['text' => $this->instructions()]],
+                    ],
+                    'contents' => [[
+                        'role' => 'user',
+                        'parts' => [['text' => $this->input($query, $products)]],
+                    ]],
+                    'generationConfig' => [
+                        'maxOutputTokens' => 500,
+                        'responseFormat' => [
+                            'text' => [
+                                'mimeType' => 'application/json',
+                                'schema' => $this->responseSchema(),
+                            ],
+                        ],
                     ],
                 ]);
 
             if ($response->failed()) {
-                $message = (string) ($response->json('error.message') ?: 'OpenAI no pudo generar las recomendaciones.');
+                $message = (string) ($response->json('error.message') ?: 'Gemini no pudo generar las recomendaciones.');
                 $this->record($user, $query, null, $model, 'error', $startedAt, [
                     'http_status' => $response->status(),
                     'error' => mb_substr($message, 0, 500),
@@ -62,10 +67,11 @@ class OpenAiRecommendationService
             try {
                 $outputText = $this->outputText($response->json());
             } catch (AiServiceException $exception) {
-                $this->record($user, $query, null, $model, 'error', $startedAt, ['error' => 'missing_or_refused_output']);
+                $this->record($user, $query, null, $model, 'error', $startedAt, ['error' => 'missing_or_blocked_output']);
 
                 throw $exception;
             }
+
             $decoded = json_decode($outputText, true, flags: JSON_THROW_ON_ERROR);
             $answer = trim((string) ($decoded['answer'] ?? ''));
             $allowedIds = $products->map(fn ($product): string => (string) $product->getKey())->all();
@@ -82,17 +88,17 @@ class OpenAiRecommendationService
                 throw new AiServiceException('La IA devolvió una respuesta vacía.');
             }
 
-            $usedModel = (string) ($response->json('model') ?: $model);
+            $usedModel = (string) ($response->json('modelVersion') ?: $model);
             $this->record($user, $query, $answer, $usedModel, 'success', $startedAt, [
-                'external_id' => $response->json('id'),
                 'recommended_product_ids' => $recommendedIds,
-                'usage' => $response->json('usage'),
+                'finish_reason' => $response->json('candidates.0.finishReason'),
+                'usage' => $response->json('usageMetadata'),
             ]);
 
             return [
                 'answer' => $answer,
                 'recommended_product_ids' => $recommendedIds,
-                'provider' => 'openai',
+                'provider' => 'gemini',
                 'model' => $usedModel,
             ];
         } catch (AiServiceException $exception) {
@@ -138,48 +144,43 @@ PROMPT;
     }
 
     /** @return array<string, mixed> */
-    private function responseFormat(): array
+    private function responseSchema(): array
     {
         return [
-            'type' => 'json_schema',
-            'name' => 'product_recommendations',
-            'strict' => true,
-            'schema' => [
-                'type' => 'object',
-                'properties' => [
-                    'answer' => ['type' => 'string'],
-                    'recommended_product_ids' => [
-                        'type' => 'array',
-                        'items' => ['type' => 'string'],
-                        'maxItems' => 3,
-                    ],
+            'type' => 'object',
+            'properties' => [
+                'answer' => [
+                    'type' => 'string',
+                    'description' => 'Respuesta breve en español para la persona que busca productos.',
                 ],
-                'required' => ['answer', 'recommended_product_ids'],
-                'additionalProperties' => false,
+                'recommended_product_ids' => [
+                    'type' => 'array',
+                    'description' => 'Identificadores exactos de hasta tres productos del catálogo recibido.',
+                    'items' => ['type' => 'string'],
+                    'maxItems' => 3,
+                ],
             ],
+            'required' => ['answer', 'recommended_product_ids'],
+            'additionalProperties' => false,
         ];
     }
 
     /** @param  array<string, mixed>  $response */
     private function outputText(array $response): string
     {
-        foreach ($response['output'] ?? [] as $output) {
-            if (($output['type'] ?? null) !== 'message') {
-                continue;
-            }
+        $blockReason = $response['promptFeedback']['blockReason'] ?? null;
 
-            foreach ($output['content'] ?? [] as $content) {
-                if (($content['type'] ?? null) === 'refusal') {
-                    throw new AiServiceException((string) ($content['refusal'] ?? 'La IA rechazó la solicitud.'));
-                }
+        if (is_string($blockReason) && $blockReason !== '') {
+            throw new AiServiceException('Gemini bloqueó la solicitud por sus filtros de seguridad.');
+        }
 
-                if (($content['type'] ?? null) === 'output_text') {
-                    return (string) ($content['text'] ?? '');
-                }
+        foreach ($response['candidates'][0]['content']['parts'] ?? [] as $part) {
+            if (is_string($part['text'] ?? null) && trim($part['text']) !== '') {
+                return $part['text'];
             }
         }
 
-        throw new AiServiceException('OpenAI no devolvió texto en la respuesta.');
+        throw new AiServiceException('Gemini no devolvió texto en la respuesta.');
     }
 
     /** @param  array<string, mixed>  $metadata */
@@ -196,7 +197,7 @@ PROMPT;
             'user_id' => $user ? (string) $user->getKey() : null,
             'query' => $query,
             'response' => $response,
-            'provider' => 'openai',
+            'provider' => 'gemini',
             'model' => $model,
             'status' => $status,
             'duration_ms' => max(0, (int) round((hrtime(true) - $startedAt) / 1_000_000)),
