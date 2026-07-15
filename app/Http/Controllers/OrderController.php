@@ -2,25 +2,32 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Resources\OrderResource;
 use App\Models\InventoryMovement;
 use App\Models\Order;
 use App\Models\Product;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use MongoDB\BSON\Decimal128;
 use Throwable;
 
 class OrderController extends Controller
 {
-    public function index(Request $request): JsonResponse
+    public function index(Request $request): AnonymousResourceCollection
     {
+        $data = $request->validate([
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
         $query = Order::orderBy('created_at', 'desc');
 
         if ($request->user()->role !== 'admin') {
             $query->where('user_id', (string) $request->user()->getKey());
         }
 
-        return response()->json($query->get());
+        return OrderResource::collection(
+            $query->paginate($data['per_page'] ?? 20)->withQueryString(),
+        );
     }
 
     public function store(Request $request): JsonResponse
@@ -60,9 +67,13 @@ class OrderController extends Controller
                     'quantity' => $data['quantity'],
                     'subtotal' => new Decimal128($subtotal),
                 ]],
+                'subtotal' => $subtotal,
+                'tax' => '0.00',
+                'shipping_cost' => '0.00',
                 'total' => $subtotal,
                 'currency' => $product->currency,
                 'status' => 'completed',
+                'payment_status' => 'paid',
             ]);
 
             InventoryMovement::create([
@@ -79,16 +90,16 @@ class OrderController extends Controller
             throw $exception;
         }
 
-        return response()->json($order, 201);
+        return (new OrderResource($order))->response()->setStatusCode(201);
     }
 
-    public function show(Request $request, Order $order): JsonResponse
+    public function show(Request $request, Order $order): OrderResource
     {
         if ($request->user()->role !== 'admin' && $order->user_id !== (string) $request->user()->getKey()) {
             abort(403, 'No tienes permiso para consultar esta compra.');
         }
 
-        return response()->json($order);
+        return new OrderResource($order);
     }
 
     public function destroy(Request $request, Order $order): JsonResponse

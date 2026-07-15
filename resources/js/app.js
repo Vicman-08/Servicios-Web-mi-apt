@@ -46,7 +46,7 @@ async function api(path, options = {}) {
         options.body = JSON.stringify(options.body);
     }
 
-    const response = await fetch(`/api${path}`, { ...options, method, headers });
+    const response = await fetch(`/api/v1${path}`, { ...options, method, headers });
     const data = response.status === 204 ? null : await response.json().catch(() => ({}));
 
     if (!response.ok) {
@@ -153,7 +153,8 @@ function enterApp() {
 
 async function loadProducts() {
     try {
-        state.products = await api('/products');
+        const response = await api('/products?per_page=50');
+        state.products = response.data;
         renderProducts();
     } catch (error) {
         showToast(error.message, 'error');
@@ -215,7 +216,8 @@ function editProduct(id) {
 
 async function loadUsers() {
     try {
-        state.users = await api('/users');
+        const response = await api('/admin/users?per_page=50');
+        state.users = response.data;
         renderUsers();
     } catch (error) { showToast(error.message, 'error'); }
 }
@@ -243,7 +245,8 @@ function renderUsers() {
 
 async function loadOrders() {
     try {
-        state.orders = await api('/orders');
+        const response = await api('/orders?per_page=50');
+        state.orders = response.data;
         renderOrders();
     } catch (error) { showToast(error.message, 'error'); }
 }
@@ -275,10 +278,10 @@ function selectTab(tab) {
 }
 
 async function login(email, password) {
-    const data = await api('/login', { method: 'POST', body: { email, password } });
-    state.token = data.token;
-    state.tokenExpiresAt = data.expires_at;
-    state.user = data.user;
+    const response = await api('/auth/login', { method: 'POST', body: { email, password } });
+    state.token = response.data.token;
+    state.tokenExpiresAt = response.data.expires_at;
+    state.user = response.data.user;
     localStorage.setItem('subarg_token', state.token);
     localStorage.setItem('subarg_token_expires_at', state.tokenExpiresAt);
     enterApp();
@@ -301,7 +304,7 @@ $('#register-form').addEventListener('submit', async (event) => {
     };
 
     try {
-        await api('/register', { method: 'POST', body: credentials });
+        await api('/auth/register', { method: 'POST', body: credentials });
         await login(credentials.email, credentials.password);
         showToast('Tu cuenta de cliente fue creada. Ya puedes comprar.');
     } catch (error) { showToast(error.message, 'error'); }
@@ -323,7 +326,7 @@ $('#logout-button').addEventListener('click', async () => {
         return;
     }
 
-    try { await api('/logout', { method: 'POST' }); } catch (_) { /* La sesión local se limpia de cualquier manera. */ }
+    try { await api('/auth/logout', { method: 'POST' }); } catch (_) { /* La sesión local se limpia de cualquier manera. */ }
     enterObserver();
     showToast('Sesión cerrada. Continúas como observador.');
 });
@@ -336,7 +339,7 @@ $('#product-form').addEventListener('submit', async (event) => {
     event.preventDefault();
     const id = $('#product-id').value;
     try {
-        await api(id ? `/products/${id}` : '/products', {
+        await api(id ? `/admin/products/${id}` : '/admin/products', {
             method: id ? 'PATCH' : 'POST',
             body: {
                 sku: $('#product-sku').value,
@@ -360,7 +363,7 @@ $('#products-grid').addEventListener('click', async (event) => {
     const { action, id } = button.dataset;
     if (action === 'edit-product') editProduct(id);
     if (action === 'delete-product' && window.confirm('¿Eliminar este producto?')) {
-        try { await api(`/products/${id}`, { method: 'DELETE' }); showToast('Producto eliminado.'); loadProducts(); }
+        try { await api(`/admin/products/${id}`, { method: 'DELETE' }); showToast('Producto eliminado.'); loadProducts(); }
         catch (error) { showToast(error.message, 'error'); }
     }
 });
@@ -379,7 +382,7 @@ $('#products-grid').addEventListener('submit', async (event) => {
 $('#user-form').addEventListener('submit', async (event) => {
     event.preventDefault();
     try {
-        await api('/users', { method: 'POST', body: {
+        await api('/admin/users', { method: 'POST', body: {
             name: $('#user-name').value,
             email: $('#user-email').value,
             password: $('#user-password').value,
@@ -399,14 +402,14 @@ $('#users-body').addEventListener('click', async (event) => {
     const id = row.dataset.userId;
     try {
         if (button.dataset.action === 'save-user') {
-            await api(`/users/${id}`, { method: 'PATCH', body: {
+            await api(`/admin/users/${id}`, { method: 'PATCH', body: {
                 role: row.querySelector('[data-field="role"]').value,
                 status: row.querySelector('[data-field="status"]').value,
             } });
             showToast('Permisos actualizados.');
         }
         if (button.dataset.action === 'delete-user' && window.confirm('¿Eliminar esta cuenta?')) {
-            await api(`/users/${id}`, { method: 'DELETE' });
+            await api(`/admin/users/${id}`, { method: 'DELETE' });
             showToast('Cuenta eliminada.');
         }
         loadUsers();
@@ -438,7 +441,8 @@ async function resumeSession() {
     }
 
     try {
-        state.user = await api('/me');
+        const response = await api('/me');
+        state.user = response.data;
         enterApp();
     } catch (_) {
         enterObserver();

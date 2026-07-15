@@ -2,6 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Models\AiInteraction;
+use App\Models\Cart;
+use App\Models\Category;
 use App\Models\Product;
 use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
@@ -16,36 +19,36 @@ class MongoCrudTest extends TestCase
     {
         $user = $this->user('buyer');
 
-        $login = $this->postJson('/api/login', [
+        $login = $this->postJson('/api/v1/auth/login', [
             'email' => $user->email,
             'password' => 'password123',
         ])->assertOk()
-            ->assertJsonPath('expires_in', 300)
-            ->assertJsonStructure(['expires_at']);
+            ->assertJsonPath('data.expires_in', 300)
+            ->assertJsonStructure(['data' => ['expires_at', 'token', 'user']]);
 
-        $this->withToken($login->json('token'))
-            ->getJson('/api/me')
+        $this->withToken($login->json('data.token'))
+            ->getJson('/api/v1/me')
             ->assertOk()
-            ->assertJsonPath('email', $user->email);
+            ->assertJsonPath('data.email', $user->email);
 
         $this->travel(6)->minutes();
         $this->app['auth']->forgetGuards();
 
-        $this->withToken($login->json('token'))
-            ->getJson('/api/me')
+        $this->withToken($login->json('data.token'))
+            ->getJson('/api/v1/me')
             ->assertUnauthorized();
     }
 
     public function test_public_registration_always_creates_a_buyer_account(): void
     {
-        $response = $this->postJson('/api/register', [
+        $response = $this->postJson('/api/v1/auth/register', [
             'name' => 'Registro Público',
             'email' => 'registro@subarg.test',
             'password' => 'password123',
             'role' => 'admin',
         ]);
 
-        $response->assertCreated()->assertJsonPath('role', 'buyer');
+        $response->assertCreated()->assertJsonPath('data.role', 'buyer');
         $this->assertSame('buyer', User::where('email', 'registro@subarg.test')->firstOrFail()->role);
     }
 
@@ -53,7 +56,7 @@ class MongoCrudTest extends TestCase
     {
         Sanctum::actingAs($this->user('admin'));
 
-        $created = $this->postJson('/api/products', [
+        $created = $this->postJson('/api/v1/admin/products', [
             'sku' => 'CRUD-001',
             'name' => 'Producto CRUD',
             'description' => 'Creado durante la prueba.',
@@ -63,23 +66,20 @@ class MongoCrudTest extends TestCase
             'is_active' => true,
         ])->assertCreated();
 
-        $id = $created->json('id');
+        $id = $created->json('data.id');
 
-        $this->getJson("/api/products/{$id}")
+        $this->getJson("/api/v1/products/{$id}")
             ->assertOk()
-            ->assertJsonPath('sku', 'CRUD-001');
+            ->assertJsonPath('data.sku', 'CRUD-001');
 
-        $this->patchJson("/api/products/{$id}", [
-            'sku' => 'CRUD-001',
+        $this->patchJson("/api/v1/admin/products/{$id}", [
             'name' => 'Producto actualizado',
-            'description' => 'Actualizado durante la prueba.',
-            'price' => 199.90,
-            'stock' => 7,
-            'currency' => 'MXN',
-            'is_active' => true,
-        ])->assertOk()->assertJsonPath('stock', 7);
+        ])->assertOk()
+            ->assertJsonPath('data.name', 'Producto actualizado')
+            ->assertJsonPath('data.sku', 'CRUD-001')
+            ->assertJsonPath('data.stock', 10);
 
-        $this->deleteJson("/api/products/{$id}")->assertOk();
+        $this->deleteJson("/api/v1/admin/products/{$id}")->assertOk();
         $this->assertNull(Product::find($id));
     }
 
@@ -95,16 +95,19 @@ class MongoCrudTest extends TestCase
             'is_active' => true,
         ]);
 
-        $this->getJson('/api/products')->assertOk()->assertJsonCount(1);
+        $this->getJson('/api/v1/products')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonStructure(['data', 'links', 'meta']);
 
-        $this->postJson('/api/products', [
+        $this->postJson('/api/v1/admin/products', [
             'sku' => 'NO-ACCESS',
             'name' => 'No autorizado',
             'price' => 10,
             'stock' => 1,
         ])->assertUnauthorized();
 
-        $this->postJson('/api/orders', [
+        $this->postJson('/api/v1/orders', [
             'product_id' => (string) Product::firstOrFail()->getKey(),
             'quantity' => 1,
         ])->assertUnauthorized();
@@ -114,21 +117,21 @@ class MongoCrudTest extends TestCase
     {
         Sanctum::actingAs($this->user('admin'));
 
-        $created = $this->postJson('/api/users', [
+        $created = $this->postJson('/api/v1/admin/users', [
             'name' => 'Usuario administrado',
             'email' => 'managed@feature.test',
             'password' => 'password123',
             'role' => 'buyer',
         ])->assertCreated();
 
-        $id = $created->json('id');
+        $id = $created->json('data.id');
 
-        $this->patchJson("/api/users/{$id}", [
+        $this->patchJson("/api/v1/admin/users/{$id}", [
             'role' => 'buyer',
             'status' => 'active',
-        ])->assertOk()->assertJsonPath('role', 'buyer');
+        ])->assertOk()->assertJsonPath('data.role', 'buyer');
 
-        $this->deleteJson("/api/users/{$id}")->assertOk();
+        $this->deleteJson("/api/v1/admin/users/{$id}")->assertOk();
         $this->assertNull(User::find($id));
     }
 
@@ -147,20 +150,104 @@ class MongoCrudTest extends TestCase
 
         Sanctum::actingAs($buyer);
 
-        $order = $this->postJson('/api/orders', [
+        $order = $this->postJson('/api/v1/orders', [
             'product_id' => (string) $product->getKey(),
             'quantity' => 2,
         ])->assertCreated();
 
         $this->assertSame(1, $product->fresh()->stock);
 
-        $this->postJson('/api/orders', [
+        $this->postJson('/api/v1/orders', [
             'product_id' => (string) $product->getKey(),
             'quantity' => 2,
         ])->assertUnprocessable();
 
-        $this->deleteJson('/api/orders/'.$order->json('id'))->assertOk();
+        $this->deleteJson('/api/v1/orders/'.$order->json('data.id'))->assertOk();
         $this->assertSame(3, $product->fresh()->stock);
+    }
+
+    public function test_public_catalog_is_paginated_and_filters_inactive_products(): void
+    {
+        foreach (range(1, 3) as $number) {
+            Product::create([
+                'sku' => "PAGE-00{$number}",
+                'name' => "Producto {$number}",
+                'description' => null,
+                'price' => '10.00',
+                'currency' => 'MXN',
+                'stock' => 1,
+                'is_active' => $number !== 3,
+            ]);
+        }
+
+        $this->getJson('/api/v1/products?per_page=1')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('meta.total', 2)
+            ->assertJsonPath('meta.per_page', 1);
+    }
+
+    public function test_new_store_collections_accept_the_planned_documents(): void
+    {
+        $buyer = $this->user('buyer');
+        $category = Category::create([
+            'name' => 'Accesorios',
+            'slug' => 'accesorios',
+            'description' => null,
+            'is_active' => true,
+        ]);
+
+        $cart = Cart::create([
+            'user_id' => (string) $buyer->getKey(),
+            'items' => [],
+            'currency' => 'MXN',
+        ]);
+
+        $interaction = AiInteraction::create([
+            'user_id' => (string) $buyer->getKey(),
+            'query' => 'Necesito un teclado para oficina',
+            'response' => null,
+            'provider' => 'pending',
+            'model' => 'pending',
+            'status' => 'success',
+            'duration_ms' => 0,
+            'metadata' => ['stage' => 2],
+        ]);
+
+        $this->assertSame('accesorios', $category->slug);
+        $this->assertSame([], $cart->items);
+        $this->assertSame(2, $interaction->metadata['stage']);
+    }
+
+    public function test_buyer_can_update_profile_without_changing_role(): void
+    {
+        $buyer = $this->user('buyer');
+        Sanctum::actingAs($buyer);
+
+        $this->patchJson('/api/v1/me', [
+            'name' => 'Cliente actualizado',
+            'phone' => '5551234567',
+            'role' => 'admin',
+            'addresses' => [[
+                'label' => 'Casa',
+                'recipient' => 'Cliente actualizado',
+                'line1' => 'Calle Uno 123',
+                'line2' => null,
+                'city' => 'Ciudad de México',
+                'state' => 'CDMX',
+                'postal_code' => '01000',
+                'country' => 'MX',
+            ]],
+        ])->assertOk()
+            ->assertJsonPath('data.name', 'Cliente actualizado')
+            ->assertJsonPath('data.phone', '5551234567')
+            ->assertJsonPath('data.role', 'buyer')
+            ->assertJsonPath('data.addresses.0.label', 'Casa');
+    }
+
+    public function test_legacy_unversioned_api_is_no_longer_exposed(): void
+    {
+        $this->getJson('/api/products')->assertNotFound();
     }
 
     private function user(string $role): User

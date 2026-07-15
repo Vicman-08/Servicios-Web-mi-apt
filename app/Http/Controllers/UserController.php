@@ -2,17 +2,27 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Resources\UserResource;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
 
 class UserController extends Controller
 {
-    public function index(): JsonResponse
+    public function index(Request $request): AnonymousResourceCollection
     {
-        return response()->json(User::orderBy('created_at', 'desc')->get());
+        $data = $request->validate([
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+
+        return UserResource::collection(
+            User::orderBy('created_at', 'desc')
+                ->paginate($data['per_page'] ?? 20)
+                ->withQueryString(),
+        );
     }
 
     public function register(Request $request): JsonResponse
@@ -31,7 +41,10 @@ class UserController extends Controller
             'status' => 'active',
         ]);
 
-        return response()->json($user, 201);
+        return response()->json([
+            'message' => 'Cuenta de cliente creada correctamente.',
+            'data' => (new UserResource($user))->resolve($request),
+        ], 201);
     }
 
     public function store(Request $request): JsonResponse
@@ -51,15 +64,18 @@ class UserController extends Controller
             'status' => $data['status'] ?? 'active',
         ]);
 
-        return response()->json($user, 201);
+        return response()->json([
+            'message' => 'Cuenta creada correctamente.',
+            'data' => (new UserResource($user))->resolve($request),
+        ], 201);
     }
 
-    public function show(User $user): JsonResponse
+    public function show(User $user): UserResource
     {
-        return response()->json($user);
+        return new UserResource($user);
     }
 
-    public function update(Request $request, User $user): JsonResponse
+    public function update(Request $request, User $user): UserResource
     {
         $data = $request->validate([
             'name' => ['sometimes', 'required', 'string', 'min:2', 'max:100'],
@@ -83,7 +99,7 @@ class UserController extends Controller
 
         $user->update($data);
 
-        return response()->json($user->fresh());
+        return new UserResource($user->fresh());
     }
 
     public function destroy(Request $request, User $user): JsonResponse
@@ -121,16 +137,48 @@ class UserController extends Controller
 
         return response()->json([
             'message' => 'Inicio de sesión exitoso.',
-            'token' => $token,
-            'expires_at' => $expiresAt->toIso8601String(),
-            'expires_in' => $expirationMinutes * 60,
-            'user' => $user,
+            'data' => [
+                'token' => $token,
+                'expires_at' => $expiresAt->toIso8601String(),
+                'expires_in' => $expirationMinutes * 60,
+                'user' => (new UserResource($user))->resolve($request),
+            ],
         ]);
     }
 
-    public function me(Request $request): JsonResponse
+    public function me(Request $request): UserResource
     {
-        return response()->json($request->user());
+        return new UserResource($request->user());
+    }
+
+    public function updateProfile(Request $request): UserResource
+    {
+        $data = $request->validate([
+            'name' => ['sometimes', 'required', 'string', 'min:2', 'max:100'],
+            'phone' => ['nullable', 'string', 'max:30'],
+            'password' => ['nullable', 'string', 'min:8', 'max:72'],
+            'addresses' => ['sometimes', 'array', 'max:5'],
+            'addresses.*.label' => ['required', 'string', 'max:50'],
+            'addresses.*.recipient' => ['required', 'string', 'max:100'],
+            'addresses.*.line1' => ['required', 'string', 'max:200'],
+            'addresses.*.line2' => ['nullable', 'string', 'max:200'],
+            'addresses.*.city' => ['required', 'string', 'max:100'],
+            'addresses.*.state' => ['required', 'string', 'max:100'],
+            'addresses.*.postal_code' => ['required', 'string', 'max:20'],
+            'addresses.*.country' => ['required', 'string', 'size:2'],
+        ]);
+
+        if (array_key_exists('name', $data)) {
+            $data['name'] = trim($data['name']);
+        }
+
+        if (empty($data['password'])) {
+            unset($data['password']);
+        }
+
+        $request->user()->update($data);
+
+        return new UserResource($request->user()->fresh());
     }
 
     public function logout(Request $request): JsonResponse

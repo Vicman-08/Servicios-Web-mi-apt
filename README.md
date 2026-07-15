@@ -2,6 +2,8 @@
 
 API REST y panel web de demostración construido con Laravel 13, MongoDB y Sanctum. El proyecto permite probar un CRUD completo, autenticación por token y una experiencia tipo tienda: observador público, cliente registrado y administrador.
 
+La API pública actual está versionada bajo el prefijo `/api/v1`. Las respuestas de recursos usan la propiedad `data`; los listados incluyen también `links` y `meta` para la paginación.
+
 ## Funciones incluidas
 
 - CRUD de productos con `GET`, `POST`, `PATCH/PUT` y `DELETE`.
@@ -12,15 +14,20 @@ API REST y panel web de demostración construido con Laravel 13, MongoDB y Sanct
 - Tokens con duración de 5 minutos, contador visible y cierre automático de sesión.
 - Compra y cancelación de productos con actualización segura de existencias.
 - Historial de compras y movimientos de inventario.
+- Respuestas JSON uniformes y listados paginados.
+- Perfil de cliente preparado para teléfono y direcciones.
+- Modelo documental preparado para categorías, carrito e interacciones con IA.
 - Interfaz gráfica adaptable a computadora y celular.
-- Inspector visual que muestra el método HTTP, la ruta y el código de respuesta de cada acción.
 
 ## Colecciones de MongoDB
 
 - `users`
+- `categories`
 - `products`
+- `carts`
 - `orders`
 - `inventory_movements`
+- `ai_interactions`
 - `personal_access_tokens`
 
 Las migraciones también crean índices únicos, validaciones de documentos y las colecciones auxiliares de Laravel.
@@ -77,16 +84,18 @@ Los clientes se crean desde el botón **Crear cuenta**. Después del registro pu
 
 | Método | Ruta | Uso | Permiso |
 |---|---|---|---|
-| `POST` | `/api/login` | Iniciar sesión | Público |
-| `POST` | `/api/register` | Registrar cuenta de cliente | Público |
-| `GET` | `/api/products` | Listar productos | Público |
-| `GET` | `/api/products/{id}` | Consultar producto | Público |
-| `POST` | `/api/products` | Crear producto | Administrador |
-| `PATCH/PUT` | `/api/products/{id}` | Actualizar producto | Administrador |
-| `DELETE` | `/api/products/{id}` | Eliminar producto | Administrador |
-| `GET/POST/PATCH/DELETE` | `/api/users` | CRUD de usuarios | Administrador |
-| `GET/POST` | `/api/orders` | Consultar o crear compras | Cliente y administrador |
-| `DELETE` | `/api/orders/{id}` | Cancelar compra | Propietario o administrador |
+| `POST` | `/api/v1/auth/login` | Iniciar sesión | Público |
+| `POST` | `/api/v1/auth/register` | Registrar cuenta de cliente | Público |
+| `POST` | `/api/v1/auth/logout` | Cerrar la sesión actual | Autenticado |
+| `GET/PATCH` | `/api/v1/me` | Consultar o actualizar perfil | Autenticado |
+| `GET` | `/api/v1/products` | Listar productos activos y paginados | Público |
+| `GET` | `/api/v1/products/{id}` | Consultar producto | Público |
+| `POST` | `/api/v1/admin/products` | Crear producto | Administrador |
+| `PATCH/PUT` | `/api/v1/admin/products/{id}` | Actualizar producto | Administrador |
+| `DELETE` | `/api/v1/admin/products/{id}` | Eliminar producto | Administrador |
+| `GET/POST/PATCH/DELETE` | `/api/v1/admin/users` | CRUD de usuarios | Administrador |
+| `GET/POST` | `/api/v1/orders` | Consultar o crear compras | Cliente y administrador |
+| `DELETE` | `/api/v1/orders/{id}` | Cancelar compra | Propietario o administrador |
 
 Las rutas protegidas reciben el token en el encabezado:
 
@@ -103,4 +112,4 @@ Las pruebas utilizan la base separada `servicios_web_subarg_test`:
 php artisan test
 ```
 
-Cubren registro automático como cliente, inicio de sesión real con token MongoDB, catálogo público del observador, restricciones de compra, CRUD de productos, CRUD de usuarios, compra, inventario insuficiente y cancelación.
+Cubren registro automático como cliente, inicio de sesión real con token MongoDB, catálogo público paginado, restricciones por rol, actualización parcial, CRUD de productos y usuarios, compra, inventario insuficiente, cancelación y documentos de categorías, carritos e interacciones de IA.

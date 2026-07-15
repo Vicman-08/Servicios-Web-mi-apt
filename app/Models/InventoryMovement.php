@@ -20,6 +20,8 @@ class InventoryMovement extends Model
         'quantity_delta',
         'stock_before',
         'stock_after',
+        'reason',
+        'metadata',
     ];
 
     protected function casts(): array

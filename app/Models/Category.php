@@ -4,31 +4,22 @@ namespace App\Models;
 
 use MongoDB\Laravel\Eloquent\Model;
 
-class Product extends Model
+class Category extends Model
 {
     protected $connection = 'mongodb';
 
-    protected $table = 'products';
+    protected $table = 'categories';
 
     protected $fillable = [
-        'sku',
         'name',
-        'price',
-        'currency',
-        'stock',
+        'slug',
         'description',
         'is_active',
-        'category_id',
-        'images',
-        'tags',
-        'attributes',
     ];
 
     protected function casts(): array
     {
         return [
-            'price' => 'decimal:2',
-            'stock' => 'integer',
             'is_active' => 'boolean',
         ];
     }
